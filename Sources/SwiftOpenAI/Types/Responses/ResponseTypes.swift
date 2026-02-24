@@ -177,6 +177,17 @@ public struct ResponseInputMessage: Encodable, Sendable {
         self.role = role
         self.content = content
     }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode("message", forKey: .type)
+        try container.encode(role, forKey: .role)
+        try container.encode(content, forKey: .content)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case type, role, content
+    }
 }
 
 /// An input item for multi-turn conversations with tool use.
@@ -323,12 +334,12 @@ public struct FunctionToolDefinition: Encodable, Sendable {
 
 /// A web search tool definition.
 public struct WebSearchToolDefinition: Encodable, Sendable {
-    /// The type, always `"web_search"`.
+    /// The type, always `"web_search_preview"`.
     public let type: String
 
     /// Creates a web search tool definition.
     public init() {
-        self.type = "web_search"
+        self.type = "web_search_preview"
     }
 }
 
@@ -340,8 +351,8 @@ public enum ResponseToolChoice: Encodable, Sendable {
     case auto
     /// Force the model to use a tool.
     case required
-    /// Prevent tool use.
-    case none
+    /// Prevent tool use. Named `disabled` to avoid collision with `Optional.none`.
+    case disabled
     /// Force a specific function.
     case function(String)
 
@@ -353,7 +364,7 @@ public enum ResponseToolChoice: Encodable, Sendable {
         case .required:
             var container = encoder.singleValueContainer()
             try container.encode("required")
-        case .none:
+        case .disabled:
             var container = encoder.singleValueContainer()
             try container.encode("none")
         case .function(let name):
