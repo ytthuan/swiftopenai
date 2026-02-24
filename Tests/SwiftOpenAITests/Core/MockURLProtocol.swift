@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 @testable import SwiftOpenAI
 
 /// A URLProtocol subclass that intercepts all requests and returns mocked responses.

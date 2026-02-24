@@ -9,29 +9,52 @@ import FoundationNetworking
 public struct ServerSentEventsStream<T: Decodable & Sendable>: AsyncSequence, Sendable {
     public typealias Element = T
 
-    private let bytes: URLSession.AsyncBytes
-    private let response: URLResponse
+    #if canImport(FoundationNetworking)
+    private let byteStream: AsyncThrowingStream<UInt8, Error>
     private let decoder: JSONDecoder
 
-    init(bytes: URLSession.AsyncBytes, response: URLResponse, decoder: JSONDecoder) {
-        self.bytes = bytes
-        self.response = response
+    init(byteStream: AsyncThrowingStream<UInt8, Error>, decoder: JSONDecoder) {
+        self.byteStream = byteStream
         self.decoder = decoder
     }
 
     public func makeAsyncIterator() -> AsyncIterator {
-        AsyncIterator(bytes: bytes, decoder: decoder)
+        AsyncIterator(iterator: byteStream.makeAsyncIterator(), decoder: decoder)
+    }
+    #else
+    private let bytes: URLSession.AsyncBytes
+    private let decoder: JSONDecoder
+
+    init(bytes: URLSession.AsyncBytes, response: URLResponse, decoder: JSONDecoder) {
+        self.bytes = bytes
+        self.decoder = decoder
     }
 
+    public func makeAsyncIterator() -> AsyncIterator {
+        AsyncIterator(iterator: bytes.makeAsyncIterator(), decoder: decoder)
+    }
+    #endif
+
     public struct AsyncIterator: AsyncIteratorProtocol {
-        private var iterator: URLSession.AsyncBytes.Iterator
+        #if canImport(FoundationNetworking)
+        private var iterator: AsyncThrowingStream<UInt8, Error>.AsyncIterator
+        #else
+        private var iterator: URLSession.AsyncBytes.AsyncIterator
+        #endif
         private let decoder: JSONDecoder
         private var buffer = Data()
 
-        init(bytes: URLSession.AsyncBytes, decoder: JSONDecoder) {
-            self.iterator = bytes.makeAsyncIterator()
+        #if canImport(FoundationNetworking)
+        init(iterator: AsyncThrowingStream<UInt8, Error>.AsyncIterator, decoder: JSONDecoder) {
+            self.iterator = iterator
             self.decoder = decoder
         }
+        #else
+        init(iterator: URLSession.AsyncBytes.AsyncIterator, decoder: JSONDecoder) {
+            self.iterator = iterator
+            self.decoder = decoder
+        }
+        #endif
 
         public mutating func next() async throws -> T? {
             while let byte = try await iterator.next() {

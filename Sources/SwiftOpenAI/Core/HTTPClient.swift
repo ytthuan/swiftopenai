@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 
 /// Internal HTTP client that handles request building, execution, and response parsing.
 ///
@@ -120,6 +123,21 @@ struct HTTPClient: Sendable {
     func performStream<T: Decodable & Sendable>(
         request: URLRequest
     ) async throws -> ServerSentEventsStream<T> {
+        #if canImport(FoundationNetworking)
+        // Linux: URLSession.AsyncBytes is unavailable in swift-corelibs-foundation.
+        // Buffer the full response, then yield bytes. True incremental streaming
+        // can be added via URLSessionDataDelegate in a future release.
+        let (data, response) = try await session.data(for: request)
+        try validateResponse(data: data, response: response)
+        let byteStream = AsyncThrowingStream<UInt8, Error> { continuation in
+            for byte in data {
+                continuation.yield(byte)
+            }
+            continuation.finish()
+        }
+        return ServerSentEventsStream<T>(byteStream: byteStream, decoder: Self.decoder)
+        #else
+        // Apple platforms: true incremental streaming via URLSession.AsyncBytes.
         let (bytes, response) = try await session.bytes(for: request)
 
         guard let httpResponse = response as? HTTPURLResponse else {
@@ -127,7 +145,6 @@ struct HTTPClient: Sendable {
         }
 
         guard (200..<300).contains(httpResponse.statusCode) else {
-            // For streaming errors, collect the body
             var errorData = Data()
             for try await byte in bytes {
                 errorData.append(byte)
@@ -136,6 +153,7 @@ struct HTTPClient: Sendable {
         }
 
         return ServerSentEventsStream<T>(bytes: bytes, response: response, decoder: Self.decoder)
+        #endif
     }
 
     // MARK: - Convenience Methods
