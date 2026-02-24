@@ -28,6 +28,18 @@ public final class OpenAI: Sendable {
     /// Access the Moderations API.
     public let moderations: Moderations
 
+    /// Access the Images API.
+    public let images: Images
+
+    /// Access the Audio API.
+    public let audio: Audio
+
+    /// Access the Files API.
+    public let files: Files
+
+    /// Access the Chat API.
+    public let chat: Chat
+
     // MARK: - Initialization
 
     /// Creates a new OpenAI client.
@@ -58,5 +70,9 @@ public final class OpenAI: Sendable {
         self.models = Models(client: httpClient)
         self.embeddings = Embeddings(client: httpClient)
         self.moderations = Moderations(client: httpClient)
+        self.images = Images(client: httpClient)
+        self.audio = Audio(client: httpClient)
+        self.files = Files(client: httpClient)
+        self.chat = Chat(client: httpClient)
     }
 }

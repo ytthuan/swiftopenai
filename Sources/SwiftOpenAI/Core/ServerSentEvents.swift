@@ -6,8 +6,8 @@ import FoundationNetworking
 /// Parses Server-Sent Events (SSE) from a streaming HTTP response.
 ///
 /// Conforms to `AsyncSequence` to allow `for await event in stream { ... }` usage.
-struct ServerSentEventsStream<T: Decodable & Sendable>: AsyncSequence, Sendable {
-    typealias Element = T
+public struct ServerSentEventsStream<T: Decodable & Sendable>: AsyncSequence, Sendable {
+    public typealias Element = T
 
     private let bytes: URLSession.AsyncBytes
     private let response: URLResponse
@@ -19,11 +19,11 @@ struct ServerSentEventsStream<T: Decodable & Sendable>: AsyncSequence, Sendable 
         self.decoder = decoder
     }
 
-    func makeAsyncIterator() -> AsyncIterator {
+    public func makeAsyncIterator() -> AsyncIterator {
         AsyncIterator(bytes: bytes, decoder: decoder)
     }
 
-    struct AsyncIterator: AsyncIteratorProtocol {
+    public struct AsyncIterator: AsyncIteratorProtocol {
         private var iterator: URLSession.AsyncBytes.Iterator
         private let decoder: JSONDecoder
         private var buffer = Data()
@@ -33,7 +33,7 @@ struct ServerSentEventsStream<T: Decodable & Sendable>: AsyncSequence, Sendable 
             self.decoder = decoder
         }
 
-        mutating func next() async throws -> T? {
+        public mutating func next() async throws -> T? {
             while let byte = try await iterator.next() {
                 // Collect bytes until we hit a newline
                 if byte == UInt8(ascii: "\n") {
