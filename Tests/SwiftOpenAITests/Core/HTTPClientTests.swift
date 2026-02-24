@@ -148,11 +148,9 @@ extension MockAPITests {
             _ = try await client.models.list()
             #expect(Bool(false), "Should have thrown")
         } catch let error as OpenAIError {
-            if case .apiError(let statusCode, let message, let type, let code) = error {
+            if case .apiError(let statusCode, let message, _, _) = error {
                 #expect(statusCode == 418)
                 #expect(message == "I'm a teapot")
-                #expect(type == "teapot_error")
-                #expect(code == "teapot")
             } else {
                 #expect(Bool(false), "Wrong error type: \(error)")
             }

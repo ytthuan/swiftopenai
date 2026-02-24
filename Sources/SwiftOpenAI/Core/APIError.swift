@@ -27,6 +27,9 @@ public enum OpenAIError: Error, Sendable {
     /// Network or connection error.
     case connectionError(message: String)
 
+    /// Failed to decode response data.
+    case decodingError(message: String)
+
     /// Request timed out.
     case timeout
 }
