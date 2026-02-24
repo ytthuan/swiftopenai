@@ -72,20 +72,13 @@ extension MockAPITests {
     }
 
     @Test func deleteResponse() async throws {
-        let json = """
-        {
-            "id": "resp-789",
-            "object": "response",
-            "created_at": 1234567890,
-            "model": "gpt-4o",
-            "output": [],
-            "status": "completed"
-        }
-        """
+        let json = #"{"id": "resp-789", "object": "response.deleted", "deleted": true}"#
         let client = makeMockClient(json: json)
         let response = try await client.responses.delete("resp-789")
 
         #expect(response.id == "resp-789")
+        #expect(response.object == "response.deleted")
+        #expect(response.deleted == true)
     }
 
     @Test func createResponseWithFunctionCall() async throws {

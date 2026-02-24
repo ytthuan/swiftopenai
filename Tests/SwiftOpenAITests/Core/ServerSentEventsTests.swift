@@ -52,8 +52,8 @@ private struct TestEvent: Decodable, Sendable, Equatable {
         #expect(chunk.model == "gpt-4")
         #expect(chunk.choices.count == 1)
         #expect(chunk.choices[0].index == 0)
-        #expect(chunk.choices[0].delta.role == "assistant")
-        #expect(chunk.choices[0].delta.content == "Hello")
+        #expect(chunk.choices[0].delta?.role == "assistant")
+        #expect(chunk.choices[0].delta?.content == "Hello")
         #expect(chunk.choices[0].finishReason == nil)
     }
 
@@ -76,8 +76,8 @@ private struct TestEvent: Decodable, Sendable, Equatable {
         let data = json.data(using: .utf8)!
         let chunk = try HTTPClient.decoder.decode(ChatCompletionChunk.self, from: data)
         #expect(chunk.choices[0].finishReason == "stop")
-        #expect(chunk.choices[0].delta.content == nil)
-        #expect(chunk.choices[0].delta.role == nil)
+        #expect(chunk.choices[0].delta?.content == nil)
+        #expect(chunk.choices[0].delta?.role == nil)
     }
 
     @Test func chatCompletionChunkWithToolCalls() throws {
@@ -111,12 +111,12 @@ private struct TestEvent: Decodable, Sendable, Equatable {
         let data = json.data(using: .utf8)!
         let chunk = try HTTPClient.decoder.decode(ChatCompletionChunk.self, from: data)
         #expect(chunk.id == "chatcmpl-456")
-        #expect(chunk.choices[0].delta.toolCalls?.count == 1)
-        #expect(chunk.choices[0].delta.toolCalls?[0].index == 0)
-        #expect(chunk.choices[0].delta.toolCalls?[0].id == "call_abc")
-        #expect(chunk.choices[0].delta.toolCalls?[0].type == "function")
-        #expect(chunk.choices[0].delta.toolCalls?[0].function?.name == "get_weather")
-        #expect(chunk.choices[0].delta.toolCalls?[0].function?.arguments == "{}")
+        #expect(chunk.choices[0].delta?.toolCalls?.count == 1)
+        #expect(chunk.choices[0].delta?.toolCalls?[0].index == 0)
+        #expect(chunk.choices[0].delta?.toolCalls?[0].id == "call_abc")
+        #expect(chunk.choices[0].delta?.toolCalls?[0].type == "function")
+        #expect(chunk.choices[0].delta?.toolCalls?[0].function?.name == "get_weather")
+        #expect(chunk.choices[0].delta?.toolCalls?[0].function?.arguments == "{}")
     }
 
     @Test func chatCompletionChunkWithUsage() throws {
@@ -311,13 +311,13 @@ private struct TestEvent: Decodable, Sendable, Equatable {
 
         #expect(chunks.count == 4)
         // First chunk: role set, empty content
-        #expect(chunks[0].choices[0].delta.role == "assistant")
-        #expect(chunks[0].choices[0].delta.content == "")
+        #expect(chunks[0].choices[0].delta?.role == "assistant")
+        #expect(chunks[0].choices[0].delta?.content == "")
         // Middle chunks: content tokens
-        #expect(chunks[1].choices[0].delta.content == "Hello")
-        #expect(chunks[2].choices[0].delta.content == " world")
+        #expect(chunks[1].choices[0].delta?.content == "Hello")
+        #expect(chunks[2].choices[0].delta?.content == " world")
         // Last chunk: finish reason
         #expect(chunks[3].choices[0].finishReason == "stop")
-        #expect(chunks[3].choices[0].delta.content == nil)
+        #expect(chunks[3].choices[0].delta?.content == nil)
     }
 }

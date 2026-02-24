@@ -169,8 +169,8 @@ public struct Responses: Sendable {
     /// Deletes a response by ID.
     ///
     /// - Parameter id: The response ID to delete.
-    /// - Returns: The deleted `Response`.
-    public func delete(_ id: String) async throws -> Response {
+    /// - Returns: The deleted `ResponseDeleted`.
+    public func delete(_ id: String) async throws -> ResponseDeleted {
         try await client.delete(path: "responses/\(id)")
     }
 

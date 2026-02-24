@@ -69,3 +69,7 @@ fastlane/report.xml
 fastlane/Preview.html
 fastlane/screenshots/**/*.png
 fastlane/test_output
+
+# Local test app (not part of the package)
+ExampleApp/
+test-report.md

@@ -14,7 +14,7 @@ public struct ChatCompletionChunk: Codable, Sendable {
 /// A choice within a streamed chunk.
 public struct ChatCompletionChunkChoice: Codable, Sendable {
     public let index: Int
-    public let delta: ChatCompletionDelta
+    public let delta: ChatCompletionDelta?
     public let finishReason: String?
 }
 
