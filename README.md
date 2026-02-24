@@ -30,18 +30,129 @@ Then add `"SwiftOpenAI"` to your target's dependencies.
 import SwiftOpenAI
 
 let client = OpenAI(apiKey: "sk-...")
+```
 
-// Chat completion
+### Chat Completions
+
+```swift
 let response = try await client.chat.completions.create(
     model: "gpt-4o",
-    messages: [.user("Hello!")]
+    messages: [
+        .system("You are a helpful assistant."),
+        .user("What is Swift concurrency?")
+    ]
 )
 print(response.choices.first?.message.content ?? "")
 ```
 
+### Streaming
+
+```swift
+let stream = try await client.chat.completions.createStream(
+    model: "gpt-4o",
+    messages: [.user("Tell me a story")]
+)
+for try await chunk in stream {
+    if let content = chunk.choices.first?.delta.content {
+        print(content, terminator: "")
+    }
+}
+```
+
+### Responses API
+
+```swift
+let response = try await client.responses.create(
+    model: "gpt-4o",
+    input: .text("Explain quantum computing")
+)
+```
+
+### Embeddings
+
+```swift
+let embeddings = try await client.embeddings.create(
+    model: "text-embedding-3-small",
+    input: .string("Hello world")
+)
+```
+
+### Images
+
+```swift
+let images = try await client.images.generate(
+    prompt: "A sunset over mountains",
+    model: "dall-e-3"
+)
+```
+
+### Audio
+
+```swift
+// Transcription
+let text = try await client.audio.transcriptions.create(
+    file: audioData, filename: "recording.mp3", model: "whisper-1"
+)
+// Text-to-Speech
+let audio = try await client.audio.speech.create(
+    model: "tts-1", input: "Hello!", voice: "alloy"
+)
+```
+
+## API Reference
+
+| Resource | Methods |
+|----------|---------|
+| `client.chat.completions` | `create()`, `createStream()` |
+| `client.responses` | `create()`, `createStream()`, `retrieve()`, `delete()` |
+| `client.embeddings` | `create()` |
+| `client.images` | `generate()`, `edit()`, `createVariation()` |
+| `client.audio.transcriptions` | `create()` |
+| `client.audio.translations` | `create()` |
+| `client.audio.speech` | `create()` |
+| `client.files` | `create()`, `retrieve()`, `list()`, `delete()`, `content()` |
+| `client.models` | `list()`, `retrieve()`, `delete()` |
+| `client.moderations` | `create()` |
+| `client.completions` | `create()` |
+| `client.fineTuning.jobs` | `create()`, `retrieve()`, `list()`, `cancel()`, `listEvents()`, `listCheckpoints()` |
+| `client.batches` | `create()`, `retrieve()`, `list()`, `cancel()` |
+| `client.vectorStores` | `create()`, `retrieve()`, `update()`, `list()`, `delete()`, `search()` |
+| `client.vectorStores.files` | `create()`, `retrieve()`, `list()`, `delete()` |
+| `client.uploads` | `create()`, `cancel()`, `complete()` |
+| `client.uploads.parts` | `create()` |
+
+## Error Handling
+
+```swift
+do {
+    let response = try await client.chat.completions.create(
+        model: "gpt-4o", messages: [.user("Hello")]
+    )
+} catch let error as OpenAIError {
+    switch error {
+    case .authenticationError(let msg): print("Auth: \(msg)")
+    case .rateLimitError(let msg): print("Rate limit: \(msg)")
+    case .apiError(let code, let msg, _, _): print("\(code): \(msg)")
+    default: print(error)
+    }
+}
+```
+
 ## Project Status
 
-🚧 **Work in progress** — Porting from the OpenAI Python SDK. See [AGENTS.md](AGENTS.md) for architecture details and contribution guidelines.
+🚧 **Work in progress** — Core API coverage is complete.
+
+### Implemented
+- ✅ Chat Completions (standard + streaming)
+- ✅ Responses API (standard + streaming)
+- ✅ Embeddings, Images, Audio, Files, Models, Moderations
+- ✅ Fine-tuning, Batches, Vector Stores, Uploads, Completions
+
+### Not Yet Implemented
+- ⬜ Realtime (WebSocket)
+- ⬜ Beta resources (Assistants)
+
+See [AGENTS.md](AGENTS.md) for architecture and contribution guidelines.
 
 ## License
 
