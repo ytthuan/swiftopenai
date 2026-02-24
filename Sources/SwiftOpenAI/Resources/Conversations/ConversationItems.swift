@@ -72,4 +72,28 @@ public struct ConversationItems: Sendable {
             queryItems: queryItems.isEmpty ? nil : queryItems
         )
     }
+
+    // MARK: - Retrieve
+
+    /// Retrieves a conversation item by ID.
+    ///
+    /// - Parameters:
+    ///   - itemId: The conversation item ID.
+    ///   - conversationId: The conversation ID.
+    /// - Returns: The ``ConversationItem``.
+    public func retrieve(_ itemId: String, conversationId: String) async throws -> ConversationItem {
+        try await client.get(path: "conversations/\(conversationId)/items/\(itemId)")
+    }
+
+    // MARK: - Delete
+
+    /// Deletes a conversation item by ID.
+    ///
+    /// - Parameters:
+    ///   - itemId: The conversation item ID.
+    ///   - conversationId: The conversation ID.
+    /// - Returns: The updated ``Conversation``.
+    public func delete(_ itemId: String, conversationId: String) async throws -> Conversation {
+        try await client.delete(path: "conversations/\(conversationId)/items/\(itemId)")
+    }
 }

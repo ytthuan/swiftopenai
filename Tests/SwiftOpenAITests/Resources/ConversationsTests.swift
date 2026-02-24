@@ -176,6 +176,52 @@ extension MockAPITests {
         #expect(requestURL?.contains("conversations/conv_123/items") == true)
     }
 
+    @Test func retrieveConversationItemByID() async throws {
+        let json = """
+        {
+            "id": "msg_123",
+            "type": "message",
+            "role": "assistant",
+            "status": "completed",
+            "content": [
+                {
+                    "type": "output_text",
+                    "text": "Hello from retrieve."
+                }
+            ]
+        }
+        """
+        let client = makeMockClient(json: json)
+        let item = try await client.conversations.items.retrieve("msg_123", conversationId: "conv_123")
+
+        #expect(item.id == "msg_123")
+        #expect(item.type == "message")
+        #expect(item.role == "assistant")
+        #expect(item.content?.first?.text == "Hello from retrieve.")
+
+        let requestURL = MockURLProtocol.lastRequest?.url?.absoluteString
+        #expect(requestURL?.contains("conversations/conv_123/items/msg_123") == true)
+    }
+
+    @Test func deleteConversationItemByID() async throws {
+        let json = """
+        {
+            "id": "conv_123",
+            "object": "conversation",
+            "created_at": 1234567890,
+            "metadata": null
+        }
+        """
+        let client = makeMockClient(json: json)
+        let conversation = try await client.conversations.items.delete("msg_123", conversationId: "conv_123")
+
+        #expect(conversation.id == "conv_123")
+        #expect(conversation.object == "conversation")
+
+        let requestURL = MockURLProtocol.lastRequest?.url?.absoluteString
+        #expect(requestURL?.contains("conversations/conv_123/items/msg_123") == true)
+    }
+
     @Test func createConversationWithInitialItems() async throws {
         let json = """
         {

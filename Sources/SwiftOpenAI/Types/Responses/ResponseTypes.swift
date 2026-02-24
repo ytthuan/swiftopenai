@@ -54,6 +54,22 @@ public struct Response: Codable, Sendable {
     }
 }
 
+extension Response {
+    /// Convenience: extracts the first text content from the output.
+    public var outputText: String? {
+        for item in output {
+            if item.type == "message", let content = item.content {
+                for c in content {
+                    if c.type == "output_text", let text = c.text {
+                        return text
+                    }
+                }
+            }
+        }
+        return nil
+    }
+}
+
 /// Response from deleting a response.
 public struct ResponseDeleted: Codable, Sendable {
     public let id: String
@@ -86,6 +102,8 @@ public struct ResponseOutputItem: Codable, Sendable {
     public let name: String?
     /// The function arguments as a JSON string.
     public let arguments: String?
+    /// The code to execute for code interpreter calls.
+    public let code: String?
 
     // MARK: Reasoning fields
 
@@ -294,12 +312,20 @@ public enum ResponseTool: Encodable, Sendable {
     case function(FunctionToolDefinition)
     /// A web search tool.
     case webSearch(WebSearchToolDefinition)
+    /// A code interpreter tool.
+    case codeInterpreter(CodeInterpreterToolDefinition)
+    /// A file search tool.
+    case fileSearch(FileSearchToolDefinition)
 
     public func encode(to encoder: Encoder) throws {
         switch self {
         case .function(let def):
             try def.encode(to: encoder)
         case .webSearch(let def):
+            try def.encode(to: encoder)
+        case .codeInterpreter(let def):
+            try def.encode(to: encoder)
+        case .fileSearch(let def):
             try def.encode(to: encoder)
         }
     }
@@ -347,6 +373,33 @@ public struct WebSearchToolDefinition: Encodable, Sendable {
     /// Creates a web search tool definition.
     public init() {
         self.type = "web_search_preview"
+    }
+}
+
+public struct CodeInterpreterToolDefinition: Encodable, Sendable {
+    /// The type, always "code_interpreter".
+    public let type: String
+    /// Container ID for file access.
+    public let container: String?
+
+    public init(container: String? = nil) {
+        self.type = "code_interpreter"
+        self.container = container
+    }
+}
+
+public struct FileSearchToolDefinition: Encodable, Sendable {
+    /// The type, always "file_search".
+    public let type: String
+    /// Vector store IDs to search.
+    public let vectorStoreIds: [String]
+    /// Maximum number of results.
+    public let maxNumResults: Int?
+
+    public init(vectorStoreIds: [String], maxNumResults: Int? = nil) {
+        self.type = "file_search"
+        self.vectorStoreIds = vectorStoreIds
+        self.maxNumResults = maxNumResults
     }
 }
 
@@ -523,6 +576,7 @@ struct ResponseCreateParams: Encodable, Sendable {
     let store: Bool?
     let metadata: [String: String]?
     let previousResponseId: String?
+    let conversation: String?
     let tools: [ResponseTool]?
     let toolChoice: ResponseToolChoice?
     let text: ResponseTextConfig?
@@ -532,6 +586,50 @@ struct ResponseCreateParams: Encodable, Sendable {
     let parallelToolCalls: Bool?
     let maxToolCalls: Int?
     let serviceTier: String?
+
+    init(
+        model: String,
+        input: ResponseInput,
+        instructions: String? = nil,
+        maxOutputTokens: Int? = nil,
+        temperature: Double? = nil,
+        topP: Double? = nil,
+        stream: Bool? = nil,
+        store: Bool? = nil,
+        metadata: [String: String]? = nil,
+        previousResponseId: String? = nil,
+        conversation: String? = nil,
+        tools: [ResponseTool]? = nil,
+        toolChoice: ResponseToolChoice? = nil,
+        text: ResponseTextConfig? = nil,
+        truncation: String? = nil,
+        contextManagement: [ContextManagement]? = nil,
+        reasoning: ReasoningConfig? = nil,
+        parallelToolCalls: Bool? = nil,
+        maxToolCalls: Int? = nil,
+        serviceTier: String? = nil
+    ) {
+        self.model = model
+        self.input = input
+        self.instructions = instructions
+        self.maxOutputTokens = maxOutputTokens
+        self.temperature = temperature
+        self.topP = topP
+        self.stream = stream
+        self.store = store
+        self.metadata = metadata
+        self.previousResponseId = previousResponseId
+        self.conversation = conversation
+        self.tools = tools
+        self.toolChoice = toolChoice
+        self.text = text
+        self.truncation = truncation
+        self.contextManagement = contextManagement
+        self.reasoning = reasoning
+        self.parallelToolCalls = parallelToolCalls
+        self.maxToolCalls = maxToolCalls
+        self.serviceTier = serviceTier
+    }
 }
 
 /// Parameters for compacting a response context.

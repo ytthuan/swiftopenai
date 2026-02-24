@@ -53,6 +53,73 @@ extension MockAPITests {
         #expect(response.usage?.totalTokens == 15)
     }
 
+    @Test func createResponseIncludesConversationInRequestBody() async throws {
+        let json = """
+        {
+            "id": "resp-conv-body",
+            "object": "response",
+            "created_at": 1234567890,
+            "model": "gpt-4o",
+            "output": [],
+            "status": "completed"
+        }
+        """
+        let client = makeMockClient(json: json)
+        _ = try await client.responses.create(
+            model: "gpt-4o",
+            input: .text("Hello!"),
+            conversation: "conv_123"
+        )
+
+        let requestBody = MockURLProtocol.lastRequestBody
+        let bodyJSON = try #require(requestBody.flatMap {
+            try? JSONSerialization.jsonObject(with: $0) as? [String: Any]
+        })
+        #expect(bodyJSON["conversation"] as? String == "conv_123")
+    }
+
+    @Test func createResponseWithConversationID() async throws {
+        let json = """
+        {
+            "id": "resp-conv-id",
+            "object": "response",
+            "created_at": 1234567890,
+            "model": "gpt-4o",
+            "output": [],
+            "status": "completed"
+        }
+        """
+        let client = makeMockClient(json: json)
+        let response = try await client.responses.create(
+            model: "gpt-4o",
+            input: .text("Continue this conversation."),
+            conversation: "conv_456"
+        )
+
+        #expect(response.id == "resp-conv-id")
+        #expect(response.status == "completed")
+    }
+
+    @Test func createStreamIncludesStoreAndMetadataInRequestBody() async throws {
+        let json = "data: {\"type\":\"response.completed\"}\n\n"
+        let client = makeMockClient(json: json)
+        _ = try await client.responses.createStream(
+            model: "gpt-4o",
+            input: .text("Hello stream!"),
+            store: true,
+            metadata: ["source": "tests"]
+        )
+
+        let requestBody = MockURLProtocol.lastRequestBody
+        let bodyJSON = try #require(requestBody.flatMap {
+            try? JSONSerialization.jsonObject(with: $0) as? [String: Any]
+        })
+        let metadata = try #require(bodyJSON["metadata"] as? [String: String])
+        #expect(bodyJSON["stream"] as? Bool == true)
+        #expect(bodyJSON["store"] as? Bool == true)
+        #expect(metadata["source"] == "tests")
+    }
+
     @Test func retrieveResponse() async throws {
         let json = """
         {
@@ -349,5 +416,57 @@ extension MockAPITests {
         })
         let reasoning = try #require(bodyJSON["reasoning"] as? [String: Any])
         #expect(reasoning["effort"] as? String == "high")
+    }
+
+    @Test func encodeResponseToolCodeInterpreter() throws {
+        let data = try HTTPClient.encoder.encode([
+            ResponseTool.codeInterpreter(CodeInterpreterToolDefinition(container: "container_123"))
+        ])
+        let tools = try #require(JSONSerialization.jsonObject(with: data) as? [[String: Any]])
+        #expect(tools.count == 1)
+        #expect(tools[0]["type"] as? String == "code_interpreter")
+        #expect(tools[0]["container"] as? String == "container_123")
+    }
+
+    @Test func encodeResponseToolFileSearch() throws {
+        let data = try HTTPClient.encoder.encode([
+            ResponseTool.fileSearch(FileSearchToolDefinition(vectorStoreIds: ["vs_123"], maxNumResults: 3))
+        ])
+        let tools = try #require(JSONSerialization.jsonObject(with: data) as? [[String: Any]])
+        let vectorStoreIDs = try #require(tools[0]["vector_store_ids"] as? [String])
+        #expect(tools.count == 1)
+        #expect(tools[0]["type"] as? String == "file_search")
+        #expect(vectorStoreIDs == ["vs_123"])
+        #expect(tools[0]["max_num_results"] as? Int == 3)
+    }
+
+    @Test func responseOutputTextExtractsTextFromOutputItems() throws {
+        let json = """
+        {
+            "id": "resp-output-text",
+            "object": "response",
+            "created_at": 1234567890,
+            "model": "gpt-4o",
+            "output": [
+                {
+                    "type": "reasoning",
+                    "id": "rs_123",
+                    "summary": [{"type": "summary_text", "text": "thinking"}]
+                },
+                {
+                    "type": "message",
+                    "id": "msg_123",
+                    "role": "assistant",
+                    "content": [
+                        {"type": "refusal", "refusal": "cannot"},
+                        {"type": "output_text", "text": "Resolved text"}
+                    ]
+                }
+            ],
+            "status": "completed"
+        }
+        """
+        let response = try HTTPClient.decoder.decode(Response.self, from: Data(json.utf8))
+        #expect(response.outputText == "Resolved text")
     }
 }

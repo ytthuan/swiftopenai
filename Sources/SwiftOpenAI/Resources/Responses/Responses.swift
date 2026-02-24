@@ -33,6 +33,7 @@ public struct Responses: Sendable {
     ///   - store: Whether to store the response for later retrieval.
     ///   - metadata: Arbitrary key-value metadata to attach.
     ///   - previousResponseId: The ID of a previous response for multi-turn conversation.
+    ///   - conversation: The conversation ID to use for this response.
     ///   - tools: Tools the model can use (functions, web search, etc.).
     ///   - toolChoice: Controls which tool the model should use.
     ///   - text: Text output format configuration (for structured outputs).
@@ -53,6 +54,7 @@ public struct Responses: Sendable {
         store: Bool? = nil,
         metadata: [String: String]? = nil,
         previousResponseId: String? = nil,
+        conversation: String? = nil,
         tools: [ResponseTool]? = nil,
         toolChoice: ResponseToolChoice? = nil,
         text: ResponseTextConfig? = nil,
@@ -74,6 +76,7 @@ public struct Responses: Sendable {
             store: store,
             metadata: metadata,
             previousResponseId: previousResponseId,
+            conversation: conversation,
             tools: tools,
             toolChoice: toolChoice,
             text: text,
@@ -101,7 +104,10 @@ public struct Responses: Sendable {
     ///   - maxOutputTokens: Maximum number of output tokens.
     ///   - temperature: Sampling temperature (0–2).
     ///   - topP: Nucleus sampling parameter.
+    ///   - store: Whether to store the response for later retrieval.
+    ///   - metadata: Arbitrary key-value metadata to attach.
     ///   - previousResponseId: The ID of a previous response for multi-turn conversation.
+    ///   - conversation: The conversation ID to use for this response.
     ///   - tools: Tools the model can use (functions, web search, etc.).
     ///   - toolChoice: Controls which tool the model should use.
     ///   - text: Text output format configuration (for structured outputs).
@@ -119,7 +125,10 @@ public struct Responses: Sendable {
         maxOutputTokens: Int? = nil,
         temperature: Double? = nil,
         topP: Double? = nil,
+        store: Bool? = nil,
+        metadata: [String: String]? = nil,
         previousResponseId: String? = nil,
+        conversation: String? = nil,
         tools: [ResponseTool]? = nil,
         toolChoice: ResponseToolChoice? = nil,
         text: ResponseTextConfig? = nil,
@@ -138,9 +147,10 @@ public struct Responses: Sendable {
             temperature: temperature,
             topP: topP,
             stream: true,
-            store: nil,
-            metadata: nil,
+            store: store,
+            metadata: metadata,
             previousResponseId: previousResponseId,
+            conversation: conversation,
             tools: tools,
             toolChoice: toolChoice,
             text: text,
