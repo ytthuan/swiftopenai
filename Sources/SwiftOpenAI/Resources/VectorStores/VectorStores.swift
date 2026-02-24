@@ -88,19 +88,4 @@ public struct VectorStores: Sendable {
         try await client.delete(path: "vector_stores/\(id)")
     }
 
-    /// Searches a vector store.
-    ///
-    /// - Parameters:
-    ///   - id: The ID of the vector store to search.
-    ///   - query: The search query string.
-    ///   - maxResults: Maximum number of results to return.
-    /// - Returns: A ``VectorStoreSearchResponse`` containing search results.
-    public func search(
-        _ id: String,
-        query: String,
-        maxResults: Int? = nil
-    ) async throws -> VectorStoreSearchResponse {
-        let params = VectorStoreSearchParams(query: query, maxResults: maxResults)
-        return try await client.post(path: "vector_stores/\(id)/search", body: params)
-    }
 }

@@ -98,16 +98,28 @@ public enum ChatCompletionToolChoice: Encodable, Sendable {
 public enum ChatCompletionResponseFormat: Encodable, Sendable {
     case text
     case jsonObject
+    /// Structured output with a JSON schema.
+    case jsonSchema(name: String, schema: [String: AnyCodable], strict: Bool? = nil, description: String? = nil)
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         switch self {
-        case .text: try container.encode("text", forKey: .type)
-        case .jsonObject: try container.encode("json_object", forKey: .type)
+        case .text:
+            try container.encode("text", forKey: .type)
+        case .jsonObject:
+            try container.encode("json_object", forKey: .type)
+        case .jsonSchema(let name, let schema, let strict, let description):
+            try container.encode("json_schema", forKey: .type)
+            var schemaContainer = container.nestedContainer(keyedBy: JsonSchemaCodingKeys.self, forKey: .jsonSchema)
+            try schemaContainer.encode(name, forKey: .name)
+            try schemaContainer.encode(schema, forKey: .schema)
+            try schemaContainer.encodeIfPresent(strict, forKey: .strict)
+            try schemaContainer.encodeIfPresent(description, forKey: .description)
         }
     }
 
-    private enum CodingKeys: String, CodingKey { case type }
+    private enum CodingKeys: String, CodingKey { case type, jsonSchema }
+    private enum JsonSchemaCodingKeys: String, CodingKey { case name, schema, strict, description }
 }
 
 /// Type-erased Codable value for JSON schema parameters.

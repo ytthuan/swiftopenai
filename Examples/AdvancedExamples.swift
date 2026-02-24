@@ -237,7 +237,7 @@ func vectorStoreWorkflow(filePaths: [String], query: String) async throws {
         print("Vector store status: \(currentStore.status)")
     }
 
-    // Step 4: Add another file individually
+    // Step 4: Retrieve a file's status in the store
     // (Demonstrates the vectorStores.files sub-resource)
     if let extraFileId = fileIds.first {
         let vsFile = try await client.vectorStores.files.retrieve(
@@ -245,17 +245,6 @@ func vectorStoreWorkflow(filePaths: [String], query: String) async throws {
             fileId: extraFileId
         )
         print("File \(vsFile.id) status in store: \(vsFile.status)")
-    }
-
-    // Step 5: Search the vector store
-    let results = try await client.vectorStores.search(
-        store.id,
-        query: query,
-        maxResults: 5
-    )
-    print("Search results for \"\(query)\":")
-    for result in results.data {
-        print("  - \(result.fileId) (score: \(result.score))")
     }
 
     // Cleanup

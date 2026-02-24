@@ -29,6 +29,15 @@ struct MultipartFormData: Sendable {
 
     // MARK: - Encoding
 
+    /// Sanitizes a string for use in a Content-Disposition header value.
+    /// Escapes quotes and strips CRLF characters to prevent header injection.
+    private static func sanitizeHeaderValue(_ value: String) -> String {
+        value
+            .replacingOccurrences(of: "\r", with: "")
+            .replacingOccurrences(of: "\n", with: "")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+    }
+
     /// Encodes all parts into the final `Data` body.
     func encode() -> Data {
         var body = Data()
@@ -39,13 +48,16 @@ struct MultipartFormData: Sendable {
 
             switch part {
             case .field(let name, let value):
-                body.append("Content-Disposition: form-data; name=\"\(name)\"\(crlf)")
+                let safeName = Self.sanitizeHeaderValue(name)
+                body.append("Content-Disposition: form-data; name=\"\(safeName)\"\(crlf)")
                 body.append(crlf)
                 body.append(value)
                 body.append(crlf)
 
             case .file(let name, let filename, let mimeType, let data):
-                body.append("Content-Disposition: form-data; name=\"\(name)\"; filename=\"\(filename)\"\(crlf)")
+                let safeName = Self.sanitizeHeaderValue(name)
+                let safeFilename = Self.sanitizeHeaderValue(filename)
+                body.append("Content-Disposition: form-data; name=\"\(safeName)\"; filename=\"\(safeFilename)\"\(crlf)")
                 body.append("Content-Type: \(mimeType)\(crlf)")
                 body.append(crlf)
                 body.append(data)

@@ -79,28 +79,4 @@ struct VectorStoreUpdateParams: Encodable, Sendable {
     let metadata: [String: String]?
 }
 
-/// Parameters for searching a vector store.
-struct VectorStoreSearchParams: Encodable, Sendable {
-    let query: String
-    let maxResults: Int?
-}
 
-/// A vector store search response.
-public struct VectorStoreSearchResponse: Codable, Sendable {
-    public let object: String
-    public let data: [VectorStoreSearchResult]
-}
-
-/// A single search result.
-public struct VectorStoreSearchResult: Codable, Sendable {
-    public let fileId: String
-    public let filename: String?
-    public let score: Double
-    public let content: [VectorStoreSearchContent]?
-}
-
-/// Content from a search result.
-public struct VectorStoreSearchContent: Codable, Sendable {
-    public let type: String
-    public let text: String?
-}

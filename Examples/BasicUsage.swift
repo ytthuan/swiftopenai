@@ -106,8 +106,8 @@ func handleErrors() async {
             print("Resource not found: \(message)")
         case .apiError(let statusCode, let message, let type, _):
             print("API error \(statusCode) [\(type ?? "unknown")]: \(message)")
-        case .connectionError(let underlying):
-            print("Network error: \(underlying.localizedDescription)")
+        case .connectionError(let message):
+            print("Network error: \(message)")
         case .timeout:
             print("Request timed out")
         default:

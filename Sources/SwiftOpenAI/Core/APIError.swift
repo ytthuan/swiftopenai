@@ -25,7 +25,7 @@ public enum OpenAIError: Error, Sendable {
     case internalServerError(message: String)
 
     /// Network or connection error.
-    case connectionError(underlyingError: Error)
+    case connectionError(message: String)
 
     /// Request timed out.
     case timeout

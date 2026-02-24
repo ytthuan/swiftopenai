@@ -59,6 +59,7 @@ struct HTTPClient: Sendable {
         request.httpMethod = method
         request.setValue("Bearer \(configuration.apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("SwiftOpenAI/0.1.0", forHTTPHeaderField: "User-Agent")
 
         if let org = configuration.organization {
             request.setValue(org, forHTTPHeaderField: "OpenAI-Organization")
@@ -86,6 +87,7 @@ struct HTTPClient: Sendable {
         request.httpMethod = method
         request.setValue("Bearer \(configuration.apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue(formData.contentType, forHTTPHeaderField: "Content-Type")
+        request.setValue("SwiftOpenAI/0.1.0", forHTTPHeaderField: "User-Agent")
 
         if let org = configuration.organization {
             request.setValue(org, forHTTPHeaderField: "OpenAI-Organization")
@@ -121,7 +123,7 @@ struct HTTPClient: Sendable {
         let (bytes, response) = try await session.bytes(for: request)
 
         guard let httpResponse = response as? HTTPURLResponse else {
-            throw OpenAIError.connectionError(underlyingError: URLError(.badServerResponse))
+            throw OpenAIError.connectionError(message: "Bad server response")
         }
 
         guard (200..<300).contains(httpResponse.statusCode) else {
@@ -193,7 +195,7 @@ struct HTTPClient: Sendable {
 
     private func validateResponse(data: Data, response: URLResponse) throws {
         guard let httpResponse = response as? HTTPURLResponse else {
-            throw OpenAIError.connectionError(underlyingError: URLError(.badServerResponse))
+            throw OpenAIError.connectionError(message: "Bad server response")
         }
 
         guard (200..<300).contains(httpResponse.statusCode) else {
