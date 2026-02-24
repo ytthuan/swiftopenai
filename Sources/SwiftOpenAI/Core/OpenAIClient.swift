@@ -14,21 +14,19 @@ public final class OpenAI: Sendable {
     /// Configuration for this client instance.
     public let configuration: Configuration
 
+    /// Internal HTTP client shared by all resources.
+    let httpClient: HTTPClient
+
     // MARK: - Resources
 
-    // TODO: Add resource accessors as they are implemented:
-    // public var chat: ChatResource { ... }
-    // public var models: ModelsResource { ... }
-    // public var embeddings: EmbeddingsResource { ... }
-    // public var images: ImagesResource { ... }
-    // public var audio: AudioResource { ... }
-    // public var files: FilesResource { ... }
-    // public var fineTuning: FineTuningResource { ... }
-    // public var moderations: ModerationsResource { ... }
-    // public var responses: ResponsesResource { ... }
-    // public var batches: BatchesResource { ... }
-    // public var uploads: UploadsResource { ... }
-    // public var vectorStores: VectorStoresResource { ... }
+    /// Access the Models API.
+    public let models: Models
+
+    /// Access the Embeddings API.
+    public let embeddings: Embeddings
+
+    /// Access the Moderations API.
+    public let moderations: Moderations
 
     // MARK: - Initialization
 
@@ -40,12 +38,14 @@ public final class OpenAI: Sendable {
     ///   - project: Optional project ID.
     ///   - baseURL: Override the default API base URL.
     ///   - timeoutInterval: Request timeout in seconds (default: 600).
+    ///   - session: Optional custom URLSession for testing.
     public init(
         apiKey: String,
         organization: String? = nil,
         project: String? = nil,
         baseURL: URL = URL(string: "https://api.openai.com/v1")!,
-        timeoutInterval: TimeInterval = 600
+        timeoutInterval: TimeInterval = 600,
+        session: URLSession? = nil
     ) {
         self.configuration = Configuration(
             apiKey: apiKey,
@@ -54,5 +54,9 @@ public final class OpenAI: Sendable {
             baseURL: baseURL,
             timeoutInterval: timeoutInterval
         )
+        self.httpClient = HTTPClient(configuration: configuration, session: session)
+        self.models = Models(client: httpClient)
+        self.embeddings = Embeddings(client: httpClient)
+        self.moderations = Moderations(client: httpClient)
     }
 }
