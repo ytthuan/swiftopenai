@@ -58,6 +58,9 @@ public final class OpenAI: Sendable {
     /// Access the Uploads API.
     public let uploads: Uploads
 
+    /// Access the Conversations API.
+    public let conversations: Conversations
+
     // MARK: - Initialization
 
     /// Creates a new OpenAI client.
@@ -98,5 +101,6 @@ public final class OpenAI: Sendable {
         self.batches = Batches(client: httpClient)
         self.uploads = Uploads(client: httpClient)
         self.completions = Completions(client: httpClient)
+        self.conversations = Conversations(client: httpClient)
     }
 }

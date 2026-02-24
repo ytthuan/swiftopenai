@@ -27,7 +27,7 @@ let client = OpenAI(apiKey: ProcessInfo.processInfo.environment["OPENAI_API_KEY"
 |------|---------------|
 | [BasicUsage.swift](#basicusageswift) | Models, Embeddings, Moderations, Images, Error Handling |
 | [ChatExamples.swift](#chatexamplesswift) | Chat Completions, Conversations, Streaming, Tool Calling, JSON Mode |
-| [ResponsesExamples.swift](#responsesexamplesswift) | Responses API, `previousResponseId` Conversations, Streaming, Instructions |
+| [ResponsesExamples.swift](#responsesexamplesswift) | Responses API, `previousResponseId` Conversations, Streaming, Conversations API |
 | [AdvancedExamples.swift](#advancedexamplesswift) | Audio, Fine-Tuning, Batches, Vector Stores, Uploads, Custom Config |
 
 ---
@@ -343,6 +343,77 @@ let response = try await client.responses.create(
 | Tool calling | Full support | Coming soon |
 | JSON mode / Structured output | `.jsonObject`, `.jsonSchema(...)` | Not yet available |
 | Best for | Fine control, tool calling, structured output | Simple multi-turn conversations, rapid prototyping |
+
+### 9. Conversations API
+
+The **Conversations API** provides explicit server-side conversation containers.
+Create a conversation, add items to it, list history, and use it alongside the Responses API.
+
+```swift
+// Create a conversation with initial context
+let conversation = try await client.conversations.create(
+    items: [
+        .system("You are a helpful Swift tutor."),
+        .user("What is an optional?"),
+    ],
+    metadata: ["topic": "swift-basics"]
+)
+
+// Add more items to the conversation
+try await client.conversations.items.create(
+    conversationId: conversation.id,
+    items: [
+        .assistant("An optional is a type that can hold a value or nil..."),
+        .user("Show me an example?"),
+    ]
+)
+
+// List all items in the conversation
+let history = try await client.conversations.items.list(
+    conversationId: conversation.id,
+    order: "asc"
+)
+for item in history.data {
+    print("[\(item.role ?? "?")] \(item.content?.first?.text ?? "")")
+}
+
+// Update metadata
+try await client.conversations.update(
+    conversation.id,
+    metadata: ["status": "completed"]
+)
+
+// Delete when done
+try await client.conversations.delete(conversation.id)
+```
+
+### 10. Conversations + Responses API Together
+```swift
+// Use Responses API with previousResponseId, then persist to a Conversation
+let response1 = try await client.responses.create(
+    model: "gpt-4o",
+    input: .text("What is structured concurrency?"),
+    store: true
+)
+
+let response2 = try await client.responses.create(
+    model: "gpt-4o",
+    input: .text("How does TaskGroup work?"),
+    previousResponseId: response1.id
+)
+
+// Save to a conversation for long-term storage
+let conv = try await client.conversations.create()
+try await client.conversations.items.create(
+    conversationId: conv.id,
+    items: [
+        .user("What is structured concurrency?"),
+        .assistant(response1.output.first?.content?.first?.text ?? ""),
+        .user("How does TaskGroup work?"),
+        .assistant(response2.output.first?.content?.first?.text ?? ""),
+    ]
+)
+```
 
 ---
 

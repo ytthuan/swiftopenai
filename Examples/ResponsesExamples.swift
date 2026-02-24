@@ -217,3 +217,106 @@ func controlledOutput() async throws {
     )
     print("Creative: \(creative.output.first?.content?.first?.text ?? "")")
 }
+
+// MARK: - 9. Conversations API
+
+/// Demonstrates the Conversations API for explicit conversation management.
+///
+/// Conversations provide a server-side container for multi-turn interactions.
+/// You can create a conversation, add items to it, list its history, and use
+/// it with the Responses API via `previousResponseId`.
+func conversationsExample() async throws {
+    let client = makeClient()
+
+    // Step 1: Create a conversation with initial context
+    let conversation = try await client.conversations.create(
+        items: [
+            .system("You are a helpful Swift programming tutor."),
+            .user("What is an optional in Swift?"),
+        ],
+        metadata: ["topic": "swift-basics", "session": "tutorial-1"]
+    )
+    print("Created conversation: \(conversation.id)")
+
+    // Step 2: Retrieve the conversation
+    let retrieved = try await client.conversations.retrieve(conversation.id)
+    print("Conversation created at: \(retrieved.createdAt)")
+
+    // Step 3: Add more items to the conversation
+    let addedItems = try await client.conversations.items.create(
+        conversationId: conversation.id,
+        items: [
+            .assistant("An optional is a type that can hold either a value or nil..."),
+            .user("Can you show me an example?"),
+        ]
+    )
+    print("Added \(addedItems.data.count) items")
+
+    // Step 4: List all items in the conversation
+    let history = try await client.conversations.items.list(
+        conversationId: conversation.id,
+        order: "asc"
+    )
+    print("\nConversation history (\(history.data.count) items):")
+    for item in history.data {
+        let text = item.content?.first?.text ?? ""
+        print("  [\(item.role ?? "?")] \(text.prefix(60))...")
+    }
+
+    // Step 5: Update conversation metadata
+    let updated = try await client.conversations.update(
+        conversation.id,
+        metadata: ["topic": "swift-basics", "status": "completed"]
+    )
+    print("\nUpdated metadata: \(updated.metadata ?? [:])")
+
+    // Step 6: Clean up
+    let deleted = try await client.conversations.delete(conversation.id)
+    print("Deleted: \(deleted.deleted)")
+}
+
+// MARK: - 10. Conversations + Responses API Together
+
+/// Shows how to use Conversations API alongside the Responses API.
+///
+/// Create a conversation, then use `previousResponseId` for efficient
+/// multi-turn interactions within that conversation context.
+func conversationsWithResponses() async throws {
+    let client = makeClient()
+
+    // Create a conversation with system instructions
+    let conversation = try await client.conversations.create(
+        items: [.developer("You are an expert on Swift concurrency.")]
+    )
+    print("Conversation: \(conversation.id)")
+
+    // Use the Responses API with previousResponseId for multi-turn
+    let response1 = try await client.responses.create(
+        model: "gpt-4o",
+        input: .text("What is structured concurrency?"),
+        store: true
+    )
+    let text1 = response1.output.first?.content?.first?.text ?? ""
+    print("Turn 1: \(text1.prefix(100))...")
+
+    // Chain the next turn
+    let response2 = try await client.responses.create(
+        model: "gpt-4o",
+        input: .text("How does TaskGroup work?"),
+        previousResponseId: response1.id
+    )
+    let text2 = response2.output.first?.content?.first?.text ?? ""
+    print("Turn 2: \(text2.prefix(100))...")
+
+    // Add the conversation items to the conversation for persistence
+    try await client.conversations.items.create(
+        conversationId: conversation.id,
+        items: [
+            .user("What is structured concurrency?"),
+            .assistant(text1),
+            .user("How does TaskGroup work?"),
+            .assistant(text2),
+        ]
+    )
+    print("Saved conversation history to \(conversation.id)")
+}

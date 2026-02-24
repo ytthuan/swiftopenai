@@ -4,7 +4,7 @@ A Swift port of the [OpenAI Python SDK](https://github.com/openai/openai-python)
 
 ## Features
 
-- **Full API coverage** — Chat Completions, Responses, Embeddings, Images, Audio, Files, Fine-tuning, Models, Moderations, Batches, Uploads, Vector Stores
+- **Full API coverage** — Chat Completions, Responses, Conversations, Embeddings, Images, Audio, Files, Fine-tuning, Models, Moderations, Batches, Uploads, Vector Stores
 - **Swift 6 strict concurrency** — All types are `Sendable`, all APIs are `async throws`
 - **All Apple platforms** — iOS 16+, macOS 13+, tvOS 16+, watchOS 9+, visionOS 1+
 - **Zero dependencies** — Pure Swift, built on Foundation `URLSession`
@@ -66,6 +66,29 @@ let response = try await client.responses.create(
     model: "gpt-4o",
     input: .text("Explain quantum computing")
 )
+
+// Multi-turn conversation with server-managed state
+let followUp = try await client.responses.create(
+    model: "gpt-4o",
+    input: .text("Tell me more about qubits"),
+    previousResponseId: response.id
+)
+```
+
+### Conversations API
+
+```swift
+// Create a conversation with initial context
+let conversation = try await client.conversations.create(
+    items: [.system("You are a helpful tutor."), .user("Hello!")]
+)
+
+// Add items and list history
+try await client.conversations.items.create(
+    conversationId: conversation.id,
+    items: [.assistant("Hi! How can I help?")]
+)
+let history = try await client.conversations.items.list(conversationId: conversation.id)
 ```
 
 ### Embeddings
@@ -146,7 +169,7 @@ The [`Examples/`](Examples/) directory contains comprehensive, copy-paste-ready 
 |------|---------------|
 | [`BasicUsage.swift`](Examples/BasicUsage.swift) | Models, Embeddings, Moderations, Images, Error handling |
 | [`ChatExamples.swift`](Examples/ChatExamples.swift) | Simple chat, multi-turn conversation, streaming, tool calling, JSON mode |
-| [`ResponsesExamples.swift`](Examples/ResponsesExamples.swift) | Responses API: text, conversation, streaming, instructions, retrieve/delete |
+| [`ResponsesExamples.swift`](Examples/ResponsesExamples.swift) | Responses API: text, `previousResponseId` conversations, Conversations API, streaming |
 | [`AdvancedExamples.swift`](Examples/AdvancedExamples.swift) | Audio, Fine-tuning, Batches, Vector Stores, Uploads, Custom config |
 
 ## CI/CD
@@ -160,7 +183,8 @@ The [`Examples/`](Examples/) directory contains comprehensive, copy-paste-ready 
 
 ### Implemented
 - ✅ Chat Completions (standard + streaming)
-- ✅ Responses API (standard + streaming)
+- ✅ Responses API (standard + streaming + `previousResponseId`)
+- ✅ Conversations API (create, retrieve, update, delete, items)
 - ✅ Embeddings, Images, Audio, Files, Models, Moderations
 - ✅ Fine-tuning, Batches, Vector Stores, Uploads, Completions
 
