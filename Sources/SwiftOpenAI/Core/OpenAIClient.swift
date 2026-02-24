@@ -40,6 +40,18 @@ public final class OpenAI: Sendable {
     /// Access the Chat API.
     public let chat: Chat
 
+    /// Access the Vector Stores API.
+    public let vectorStores: VectorStores
+
+    /// Access the Responses API.
+    public let responses: Responses
+
+    /// Access the Fine-tuning API.
+    public let fineTuning: FineTuning
+
+    /// Access the Batches API.
+    public let batches: Batches
+
     // MARK: - Initialization
 
     /// Creates a new OpenAI client.
@@ -74,5 +86,9 @@ public final class OpenAI: Sendable {
         self.audio = Audio(client: httpClient)
         self.files = Files(client: httpClient)
         self.chat = Chat(client: httpClient)
+        self.responses = Responses(client: httpClient)
+        self.vectorStores = VectorStores(client: httpClient)
+        self.fineTuning = FineTuning(client: httpClient)
+        self.batches = Batches(client: httpClient)
     }
 }
