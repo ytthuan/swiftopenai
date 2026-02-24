@@ -10,6 +10,7 @@ A comprehensive Swift SDK for the [OpenAI API](https://platform.openai.com/docs/
 
 - **Full API coverage** — Responses, Chat Completions, Conversations, Embeddings, Images, Audio, Files, Fine-tuning, Models, Moderations, Batches, Uploads, Vector Stores
 - **Swift 6 strict concurrency** — All types are `Sendable`, all APIs are `async throws`
+- **WebSocket mode** — Persistent connections for low-latency agentic workflows (up to ~40% faster)
 - **Streaming** — Real-time `AsyncSequence`-based SSE streaming for both Chat and Responses APIs
 - **Function calling & tools** — Full support for function calling, code interpreter, file search, and web search tools
 - **Structured outputs** — JSON Schema-based structured output for deterministic response formats
@@ -25,7 +26,7 @@ Add to your `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/ytthuan/swiftopenai.git", from: "0.2.0"),
+    .package(url: "https://github.com/ytthuan/swiftopenai.git", from: "0.3.0"),
 ]
 ```
 
@@ -464,6 +465,134 @@ let compacted = try await client.responses.compact(
 )
 print("Tokens used: \(compacted.usage?.inputTokens ?? 0) in, \(compacted.usage?.outputTokens ?? 0) out")
 ```
+
+---
+
+## WebSocket Mode *(New in v0.3.0)*
+
+Use persistent WebSocket connections for lower-latency agentic workflows. WebSocket mode keeps a connection open to `/v1/responses` and sends only incremental input per turn, reducing per-turn overhead by up to **~40%** for tool-call-heavy workflows.
+
+> **Note:** WebSocket mode is Apple-only (macOS 13+, iOS 16+). Requires `URLSessionWebSocketTask`.
+
+### Basic Usage
+
+```swift
+let ws = client.responses.connectWebSocket()
+await ws.connect()
+
+let stream = try await ws.create(
+    model: "gpt-5.2",
+    input: .text("Explain quantum computing briefly."),
+    store: false
+)
+
+for try await event in stream {
+    if let delta = event.delta { print(delta, terminator: "") }
+}
+
+await ws.close()
+```
+
+### Multi-Turn (Incremental Input)
+
+Continue a conversation by sending only new input plus `previousResponseId`:
+
+```swift
+let ws = client.responses.connectWebSocket()
+await ws.connect()
+
+// Turn 1
+let stream1 = try await ws.create(model: "gpt-5.2", input: .text("My name is Alice."), store: false)
+var responseId: String?
+for try await event in stream1 {
+    if event.type == "response.completed" { responseId = event.response?.id }
+}
+
+// Turn 2 — only sends new input, server reuses connection-local context
+let stream2 = try await ws.create(
+    model: "gpt-5.2",
+    input: .text("What's my name?"),
+    previousResponseId: responseId,
+    store: false
+)
+for try await event in stream2 {
+    if let delta = event.delta { print(delta, terminator: "") }
+}
+
+await ws.close()
+```
+
+### Function Calling over WebSocket
+
+```swift
+let ws = client.responses.connectWebSocket()
+await ws.connect()
+
+let stream1 = try await ws.create(
+    model: "gpt-5.2",
+    input: .text("What's the weather in Tokyo?"),
+    tools: [weatherTool],
+    store: false
+)
+
+var callId: String?
+var responseId: String?
+for try await event in stream1 {
+    if event.type == "response.completed" {
+        responseId = event.response?.id
+        if let fc = event.response?.output.first(where: { $0.type == "function_call" }) {
+            callId = fc.callId
+        }
+    }
+}
+
+// Provide tool result — only incremental input, low latency
+let stream2 = try await ws.create(
+    model: "gpt-5.2",
+    input: .items([
+        .functionCallOutput(FunctionCallOutput(callId: callId!, output: "{\"temp\": 22}"))
+    ]),
+    previousResponseId: responseId,
+    tools: [weatherTool],
+    store: false
+)
+for try await event in stream2 {
+    if let delta = event.delta { print(delta, terminator: "") }
+}
+
+await ws.close()
+```
+
+### Warmup (Pre-warm State)
+
+Pre-warm request state for even faster first response:
+
+```swift
+let ws = client.responses.connectWebSocket()
+await ws.connect()
+
+// Warmup — no model output, but prepares state
+let warmupId = try await ws.warmup(
+    model: "gpt-5.2",
+    input: .text("System ready."),
+    tools: [tool1, tool2]
+)
+
+// First real turn — faster because state was pre-warmed
+let stream = try await ws.create(
+    model: "gpt-5.2",
+    input: .text("Run the analysis."),
+    previousResponseId: warmupId,
+    tools: [tool1, tool2],
+    store: false
+)
+```
+
+### Key Behaviors
+- **Sequential execution** — one response at a time per connection
+- **60-minute limit** — reconnect when the limit is reached
+- **ZDR compatible** — works with `store: false` and Zero Data Retention
+- **Connection-local cache** — the most recent response is cached in memory for fast continuation
 
 ---
 
