@@ -5,7 +5,7 @@ public struct Model: Codable, Sendable, Identifiable {
     public let id: String
     public let object: String
     public let created: Int?
-    public let ownedBy: String
+    public let ownedBy: String?
 }
 
 /// Response from deleting a model.
