@@ -9,6 +9,13 @@ public struct CursorPage<T: Codable & Sendable>: Sendable {
     public let firstId: String?
     public let lastId: String?
 
+    public init(data: [T], hasMore: Bool, firstId: String?, lastId: String?) {
+        self.data = data
+        self.hasMore = hasMore
+        self.firstId = firstId
+        self.lastId = lastId
+    }
+
     init(response: ListResponse<T>) {
         self.data = response.data
         self.hasMore = response.hasMore ?? false

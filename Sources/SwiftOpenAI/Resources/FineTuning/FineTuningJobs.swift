@@ -41,7 +41,8 @@ public struct FineTuningJobs: Sendable {
     /// - Parameter id: The fine-tuning job identifier.
     /// - Returns: The ``FineTuningJob``.
     public func retrieve(_ id: String) async throws -> FineTuningJob {
-        try await client.get(path: "fine_tuning/jobs/\(id)")
+        let validatedID = try id.validatePathComponent()
+        return try await client.get(path: "fine_tuning/jobs/\(validatedID)")
     }
 
     /// Lists fine-tuning jobs.
@@ -62,7 +63,8 @@ public struct FineTuningJobs: Sendable {
     /// - Parameter id: The fine-tuning job identifier.
     /// - Returns: The cancelled ``FineTuningJob``.
     public func cancel(_ id: String) async throws -> FineTuningJob {
-        try await client.post(path: "fine_tuning/jobs/\(id)/cancel", body: nil as String?)
+        let validatedID = try id.validatePathComponent()
+        return try await client.post(path: "fine_tuning/jobs/\(validatedID)/cancel", body: nil as String?)
     }
 
     /// Lists events for a fine-tuning job.
@@ -77,11 +79,12 @@ public struct FineTuningJobs: Sendable {
         after: String? = nil,
         limit: Int? = nil
     ) async throws -> ListResponse<FineTuningEvent> {
+        let validatedID = try id.validatePathComponent()
         var queryItems: [URLQueryItem] = []
         if let after { queryItems.append(URLQueryItem(name: "after", value: after)) }
         if let limit { queryItems.append(URLQueryItem(name: "limit", value: String(limit))) }
         return try await client.get(
-            path: "fine_tuning/jobs/\(id)/events",
+            path: "fine_tuning/jobs/\(validatedID)/events",
             queryItems: queryItems.isEmpty ? nil : queryItems
         )
     }
@@ -98,11 +101,12 @@ public struct FineTuningJobs: Sendable {
         after: String? = nil,
         limit: Int? = nil
     ) async throws -> ListResponse<FineTuningCheckpoint> {
+        let validatedID = try id.validatePathComponent()
         var queryItems: [URLQueryItem] = []
         if let after { queryItems.append(URLQueryItem(name: "after", value: after)) }
         if let limit { queryItems.append(URLQueryItem(name: "limit", value: String(limit))) }
         return try await client.get(
-            path: "fine_tuning/jobs/\(id)/checkpoints",
+            path: "fine_tuning/jobs/\(validatedID)/checkpoints",
             queryItems: queryItems.isEmpty ? nil : queryItems
         )
     }

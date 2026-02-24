@@ -61,4 +61,42 @@ public struct Completions: Sendable {
         )
         return try await client.post(path: "completions", body: params)
     }
+
+    /// Creates a streaming completion for the provided prompt.
+    ///
+    /// Returns an `AsyncSequence` of `CompletionChunk` values.
+    public func createStream(
+        model: String,
+        prompt: CompletionPrompt? = nil,
+        maxTokens: Int? = nil,
+        temperature: Double? = nil,
+        topP: Double? = nil,
+        n: Int? = nil,
+        stop: CompletionStop? = nil,
+        presencePenalty: Double? = nil,
+        frequencyPenalty: Double? = nil,
+        user: String? = nil,
+        suffix: String? = nil,
+        seed: Int? = nil
+    ) async throws -> ServerSentEventsStream<CompletionChunk> {
+        let params = CompletionCreateParams(
+            model: model,
+            prompt: prompt,
+            maxTokens: maxTokens,
+            temperature: temperature,
+            topP: topP,
+            n: n,
+            stream: true,
+            logprobs: nil,
+            stop: stop,
+            presencePenalty: presencePenalty,
+            frequencyPenalty: frequencyPenalty,
+            bestOf: nil,
+            user: user,
+            suffix: suffix,
+            echo: nil,
+            seed: seed
+        )
+        return try await client.postStream(path: "completions", body: params)
+    }
 }

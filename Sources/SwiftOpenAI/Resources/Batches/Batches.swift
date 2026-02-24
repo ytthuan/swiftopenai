@@ -39,7 +39,8 @@ public struct Batches: Sendable {
     /// - Parameter id: The batch ID.
     /// - Returns: The `Batch` object.
     public func retrieve(_ id: String) async throws -> Batch {
-        try await client.get(path: "batches/\(id)")
+        let validatedID = try id.validatePathComponent()
+        return try await client.get(path: "batches/\(validatedID)")
     }
 
     /// Lists batches.
@@ -60,6 +61,7 @@ public struct Batches: Sendable {
     /// - Parameter id: The batch ID to cancel.
     /// - Returns: The cancelled `Batch` object.
     public func cancel(_ id: String) async throws -> Batch {
-        try await client.post(path: "batches/\(id)/cancel")
+        let validatedID = try id.validatePathComponent()
+        return try await client.post(path: "batches/\(validatedID)/cancel")
     }
 }

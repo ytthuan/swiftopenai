@@ -12,6 +12,9 @@ public enum OpenAIError: Error, Sendable {
     /// Permission denied (403).
     case permissionDeniedError(message: String)
 
+    /// Conflict (409).
+    case conflictError(message: String)
+
     /// Resource not found (404).
     case notFoundError(message: String)
 
@@ -32,6 +35,35 @@ public enum OpenAIError: Error, Sendable {
 
     /// Request timed out.
     case timeout
+}
+
+extension OpenAIError: LocalizedError {
+    public var errorDescription: String? {
+        switch self {
+        case .apiError(_, let message, _, _):
+            return message
+        case .authenticationError(let message):
+            return message
+        case .permissionDeniedError(let message):
+            return message
+        case .conflictError(let message):
+            return message
+        case .notFoundError(let message):
+            return message
+        case .rateLimitError(let message):
+            return message
+        case .unprocessableEntityError(let message):
+            return message
+        case .internalServerError(let message):
+            return message
+        case .connectionError(let message):
+            return message
+        case .decodingError(let message):
+            return message
+        case .timeout:
+            return "Request timed out."
+        }
+    }
 }
 
 /// The error body returned by the OpenAI API.

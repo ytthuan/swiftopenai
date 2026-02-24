@@ -41,7 +41,8 @@ public struct Uploads: Sendable {
     /// - Parameter id: The ID of the upload to cancel.
     /// - Returns: The cancelled ``Upload`` object.
     public func cancel(_ id: String) async throws -> Upload {
-        try await client.post(path: "uploads/\(id)/cancel", body: nil as String?)
+        let validatedID = try id.validatePathComponent()
+        return try await client.post(path: "uploads/\(validatedID)/cancel", body: nil as String?)
     }
 
     /// Completes an upload.
@@ -52,7 +53,8 @@ public struct Uploads: Sendable {
     ///   - md5: Optional MD5 checksum for verification.
     /// - Returns: The completed ``Upload`` object.
     public func complete(_ id: String, partIds: [String], md5: String? = nil) async throws -> Upload {
+        let validatedID = try id.validatePathComponent()
         let params = UploadCompleteParams(partIds: partIds, md5: md5)
-        return try await client.post(path: "uploads/\(id)/complete", body: params)
+        return try await client.post(path: "uploads/\(validatedID)/complete", body: params)
     }
 }

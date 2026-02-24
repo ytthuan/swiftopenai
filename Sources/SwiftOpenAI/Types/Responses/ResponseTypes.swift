@@ -77,6 +77,18 @@ public struct ResponseDeleted: Codable, Sendable {
     public let deleted: Bool
 }
 
+/// Truncation strategy for response creation.
+public enum TruncationStrategy: String, Codable, Sendable {
+    case auto
+    case disabled
+}
+
+/// Service tier for response creation.
+public enum ServiceTier: String, Codable, Sendable {
+    case auto
+    case `default`
+}
+
 // MARK: - Output Items
 
 /// An output item in a response. Uses `type` field for discrimination.
@@ -580,12 +592,12 @@ struct ResponseCreateParams: Encodable, Sendable {
     let tools: [ResponseTool]?
     let toolChoice: ResponseToolChoice?
     let text: ResponseTextConfig?
-    let truncation: String?
+    let truncation: TruncationStrategy?
     let contextManagement: [ContextManagement]?
     let reasoning: ReasoningConfig?
     let parallelToolCalls: Bool?
     let maxToolCalls: Int?
-    let serviceTier: String?
+    let serviceTier: ServiceTier?
 
     init(
         model: String,
@@ -602,12 +614,12 @@ struct ResponseCreateParams: Encodable, Sendable {
         tools: [ResponseTool]? = nil,
         toolChoice: ResponseToolChoice? = nil,
         text: ResponseTextConfig? = nil,
-        truncation: String? = nil,
+        truncation: TruncationStrategy? = nil,
         contextManagement: [ContextManagement]? = nil,
         reasoning: ReasoningConfig? = nil,
         parallelToolCalls: Bool? = nil,
         maxToolCalls: Int? = nil,
-        serviceTier: String? = nil
+        serviceTier: ServiceTier? = nil
     ) {
         self.model = model
         self.input = input

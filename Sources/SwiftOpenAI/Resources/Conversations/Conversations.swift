@@ -46,7 +46,8 @@ public struct Conversations: Sendable {
     /// - Parameter id: The conversation ID.
     /// - Returns: The ``Conversation``.
     public func retrieve(_ id: String) async throws -> Conversation {
-        try await client.get(path: "conversations/\(id)")
+        let validatedID = try id.validatePathComponent()
+        return try await client.get(path: "conversations/\(validatedID)")
     }
 
     // MARK: - Update
@@ -58,8 +59,9 @@ public struct Conversations: Sendable {
     ///   - metadata: New key-value metadata to set.
     /// - Returns: The updated ``Conversation``.
     public func update(_ id: String, metadata: [String: String]) async throws -> Conversation {
+        let validatedID = try id.validatePathComponent()
         let params = ConversationUpdateParams(metadata: metadata)
-        return try await client.post(path: "conversations/\(id)", body: params)
+        return try await client.post(path: "conversations/\(validatedID)", body: params)
     }
 
     // MARK: - Delete
@@ -69,6 +71,7 @@ public struct Conversations: Sendable {
     /// - Parameter id: The conversation ID.
     /// - Returns: A ``ConversationDeleted`` confirmation.
     public func delete(_ id: String) async throws -> ConversationDeleted {
-        try await client.delete(path: "conversations/\(id)")
+        let validatedID = try id.validatePathComponent()
+        return try await client.delete(path: "conversations/\(validatedID)")
     }
 }

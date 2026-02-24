@@ -30,6 +30,30 @@ public struct CompletionChoice: Codable, Sendable {
     public let finishReason: String?
 }
 
+/// A streamed completion chunk.
+public struct CompletionChunk: Codable, Sendable {
+    /// Unique identifier for the completion.
+    public let id: String
+    /// The object type for the chunk.
+    public let object: String
+    /// Unix timestamp of when the chunk was created.
+    public let created: Int
+    /// The model used for the completion.
+    public let model: String
+    /// The list of streamed chunk choices.
+    public let choices: [CompletionChunkChoice]
+}
+
+/// A choice in a streamed completion chunk.
+public struct CompletionChunkChoice: Codable, Sendable {
+    /// The index of this choice in the list.
+    public let index: Int
+    /// The generated text fragment.
+    public let text: String
+    /// The reason the model stopped generating tokens.
+    public let finishReason: String?
+}
+
 /// Log probabilities for a completion.
 public struct CompletionLogprobs: Codable, Sendable {
     /// The tokens in the completion.
@@ -50,7 +74,7 @@ struct CompletionCreateParams: Encodable, Sendable {
     let temperature: Double?
     let topP: Double?
     let n: Int?
-    let stream: Bool?
+    let stream: Bool? = nil
     let logprobs: Int?
     let stop: CompletionStop?
     let presencePenalty: Double?

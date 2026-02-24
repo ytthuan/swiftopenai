@@ -58,12 +58,12 @@ public struct Responses: Sendable {
         tools: [ResponseTool]? = nil,
         toolChoice: ResponseToolChoice? = nil,
         text: ResponseTextConfig? = nil,
-        truncation: String? = nil,
+        truncation: TruncationStrategy? = nil,
         contextManagement: [ContextManagement]? = nil,
         reasoning: ReasoningConfig? = nil,
         parallelToolCalls: Bool? = nil,
         maxToolCalls: Int? = nil,
-        serviceTier: String? = nil
+        serviceTier: ServiceTier? = nil
     ) async throws -> Response {
         let params = ResponseCreateParams(
             model: model,
@@ -132,12 +132,12 @@ public struct Responses: Sendable {
         tools: [ResponseTool]? = nil,
         toolChoice: ResponseToolChoice? = nil,
         text: ResponseTextConfig? = nil,
-        truncation: String? = nil,
+        truncation: TruncationStrategy? = nil,
         contextManagement: [ContextManagement]? = nil,
         reasoning: ReasoningConfig? = nil,
         parallelToolCalls: Bool? = nil,
         maxToolCalls: Int? = nil,
-        serviceTier: String? = nil
+        serviceTier: ServiceTier? = nil
     ) async throws -> ServerSentEventsStream<ResponseStreamEvent> {
         let params = ResponseCreateParams(
             model: model,

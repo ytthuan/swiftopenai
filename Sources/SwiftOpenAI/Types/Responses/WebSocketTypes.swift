@@ -57,7 +57,7 @@ public struct ResponsesClientEvent: Encodable, Sendable {
     public let text: ResponseTextConfig?
 
     /// Truncation strategy.
-    public let truncation: String?
+    public let truncation: TruncationStrategy?
 
     /// Context management configuration.
     public let contextManagement: [ContextManagement]?
@@ -72,7 +72,7 @@ public struct ResponsesClientEvent: Encodable, Sendable {
     public let maxToolCalls: Int?
 
     /// Service tier.
-    public let serviceTier: String?
+    public let serviceTier: ServiceTier?
 
     /// Set to `false` to warm up request state without generating output.
     /// The warmup returns a response ID usable as `previousResponseId` on the next turn.
@@ -91,12 +91,12 @@ public struct ResponsesClientEvent: Encodable, Sendable {
         tools: [ResponseTool]? = nil,
         toolChoice: ResponseToolChoice? = nil,
         text: ResponseTextConfig? = nil,
-        truncation: String? = nil,
+        truncation: TruncationStrategy? = nil,
         contextManagement: [ContextManagement]? = nil,
         reasoning: ReasoningConfig? = nil,
         parallelToolCalls: Bool? = nil,
         maxToolCalls: Int? = nil,
-        serviceTier: String? = nil,
+        serviceTier: ServiceTier? = nil,
         generate: Bool? = nil
     ) {
         self.model = model

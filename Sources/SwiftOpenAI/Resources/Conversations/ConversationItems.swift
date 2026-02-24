@@ -37,9 +37,10 @@ public struct ConversationItems: Sendable {
         conversationId: String,
         items: [ConversationInputItem]
     ) async throws -> ConversationItemList {
+        let validatedConversationID = try conversationId.validatePathComponent()
         let params = ConversationItemsCreateParams(items: items)
         return try await client.post(
-            path: "conversations/\(conversationId)/items",
+            path: "conversations/\(validatedConversationID)/items",
             body: params
         )
     }
@@ -62,13 +63,14 @@ public struct ConversationItems: Sendable {
         limit: Int? = nil,
         order: String? = nil
     ) async throws -> ConversationItemList {
+        let validatedConversationID = try conversationId.validatePathComponent()
         var queryItems: [URLQueryItem] = []
         if let after { queryItems.append(URLQueryItem(name: "after", value: after)) }
         if let before { queryItems.append(URLQueryItem(name: "before", value: before)) }
         if let limit { queryItems.append(URLQueryItem(name: "limit", value: String(limit))) }
         if let order { queryItems.append(URLQueryItem(name: "order", value: order)) }
         return try await client.get(
-            path: "conversations/\(conversationId)/items",
+            path: "conversations/\(validatedConversationID)/items",
             queryItems: queryItems.isEmpty ? nil : queryItems
         )
     }
@@ -82,7 +84,9 @@ public struct ConversationItems: Sendable {
     ///   - conversationId: The conversation ID.
     /// - Returns: The ``ConversationItem``.
     public func retrieve(_ itemId: String, conversationId: String) async throws -> ConversationItem {
-        try await client.get(path: "conversations/\(conversationId)/items/\(itemId)")
+        let validatedConversationID = try conversationId.validatePathComponent()
+        let validatedItemID = try itemId.validatePathComponent()
+        return try await client.get(path: "conversations/\(validatedConversationID)/items/\(validatedItemID)")
     }
 
     // MARK: - Delete
@@ -94,6 +98,8 @@ public struct ConversationItems: Sendable {
     ///   - conversationId: The conversation ID.
     /// - Returns: The updated ``Conversation``.
     public func delete(_ itemId: String, conversationId: String) async throws -> Conversation {
-        try await client.delete(path: "conversations/\(conversationId)/items/\(itemId)")
+        let validatedConversationID = try conversationId.validatePathComponent()
+        let validatedItemID = try itemId.validatePathComponent()
+        return try await client.delete(path: "conversations/\(validatedConversationID)/items/\(validatedItemID)")
     }
 }

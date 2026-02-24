@@ -26,13 +26,15 @@ public struct Models: Sendable {
     ///
     /// - Parameter id: The ID of the model (e.g. "gpt-4o").
     public func retrieve(_ id: String) async throws -> Model {
-        try await client.get(path: "models/\(id)")
+        let validatedID = try id.validatePathComponent()
+        return try await client.get(path: "models/\(validatedID)")
     }
 
     /// Deletes a fine-tuned model.
     ///
     /// - Parameter id: The model ID to delete.
     public func delete(_ id: String) async throws -> ModelDeleted {
-        try await client.delete(path: "models/\(id)")
+        let validatedID = try id.validatePathComponent()
+        return try await client.delete(path: "models/\(validatedID)")
     }
 }

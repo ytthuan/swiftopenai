@@ -126,12 +126,12 @@ public actor ResponsesWebSocket {
         tools: [ResponseTool]? = nil,
         toolChoice: ResponseToolChoice? = nil,
         text: ResponseTextConfig? = nil,
-        truncation: String? = nil,
+        truncation: TruncationStrategy? = nil,
         contextManagement: [ContextManagement]? = nil,
         reasoning: ReasoningConfig? = nil,
         parallelToolCalls: Bool? = nil,
         maxToolCalls: Int? = nil,
-        serviceTier: String? = nil,
+        serviceTier: ServiceTier? = nil,
         generate: Bool? = nil
     ) async throws -> AsyncThrowingStream<ResponseStreamEvent, Error> {
         let event = ResponsesClientEvent(

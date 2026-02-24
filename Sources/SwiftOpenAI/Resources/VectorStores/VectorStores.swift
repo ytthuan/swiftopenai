@@ -41,7 +41,8 @@ public struct VectorStores: Sendable {
     /// - Parameter id: The ID of the vector store to retrieve.
     /// - Returns: The ``VectorStore``.
     public func retrieve(_ id: String) async throws -> VectorStore {
-        try await client.get(path: "vector_stores/\(id)")
+        let validatedID = try id.validatePathComponent()
+        return try await client.get(path: "vector_stores/\(validatedID)")
     }
 
     /// Updates a vector store.
@@ -60,11 +61,12 @@ public struct VectorStores: Sendable {
         expiresAfter: VectorStoreExpirationPolicy? = nil,
         metadata: [String: String]? = nil
     ) async throws -> VectorStore {
+        let validatedID = try id.validatePathComponent()
         let params = VectorStoreUpdateParams(
             name: name, description: description,
             expiresAfter: expiresAfter, metadata: metadata
         )
-        return try await client.post(path: "vector_stores/\(id)", body: params)
+        return try await client.post(path: "vector_stores/\(validatedID)", body: params)
     }
 
     /// Lists vector stores.
@@ -85,7 +87,8 @@ public struct VectorStores: Sendable {
     /// - Parameter id: The ID of the vector store to delete.
     /// - Returns: A ``VectorStoreDeleted`` confirmation.
     public func delete(_ id: String) async throws -> VectorStoreDeleted {
-        try await client.delete(path: "vector_stores/\(id)")
+        let validatedID = try id.validatePathComponent()
+        return try await client.delete(path: "vector_stores/\(validatedID)")
     }
 
 }

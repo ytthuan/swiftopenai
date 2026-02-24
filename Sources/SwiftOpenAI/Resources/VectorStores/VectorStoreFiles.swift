@@ -14,9 +14,10 @@ public struct VectorStoreFiles: Sendable {
     ///   - fileId: The ID of the file to add.
     /// - Returns: The created ``VectorStoreFile``.
     public func create(vectorStoreId: String, fileId: String) async throws -> VectorStoreFile {
+        let validatedVectorStoreID = try vectorStoreId.validatePathComponent()
         struct Params: Encodable, Sendable { let fileId: String }
         return try await client.post(
-            path: "vector_stores/\(vectorStoreId)/files",
+            path: "vector_stores/\(validatedVectorStoreID)/files",
             body: Params(fileId: fileId)
         )
     }
@@ -28,7 +29,9 @@ public struct VectorStoreFiles: Sendable {
     ///   - fileId: The ID of the file to retrieve.
     /// - Returns: The ``VectorStoreFile``.
     public func retrieve(vectorStoreId: String, fileId: String) async throws -> VectorStoreFile {
-        try await client.get(path: "vector_stores/\(vectorStoreId)/files/\(fileId)")
+        let validatedVectorStoreID = try vectorStoreId.validatePathComponent()
+        let validatedFileID = try fileId.validatePathComponent()
+        return try await client.get(path: "vector_stores/\(validatedVectorStoreID)/files/\(validatedFileID)")
     }
 
     /// Lists files in a vector store.
@@ -43,11 +46,12 @@ public struct VectorStoreFiles: Sendable {
         after: String? = nil,
         limit: Int? = nil
     ) async throws -> ListResponse<VectorStoreFile> {
+        let validatedVectorStoreID = try vectorStoreId.validatePathComponent()
         var queryItems: [URLQueryItem] = []
         if let after { queryItems.append(URLQueryItem(name: "after", value: after)) }
         if let limit { queryItems.append(URLQueryItem(name: "limit", value: String(limit))) }
         return try await client.get(
-            path: "vector_stores/\(vectorStoreId)/files",
+            path: "vector_stores/\(validatedVectorStoreID)/files",
             queryItems: queryItems.isEmpty ? nil : queryItems
         )
     }
@@ -59,6 +63,8 @@ public struct VectorStoreFiles: Sendable {
     ///   - fileId: The ID of the file to remove.
     /// - Returns: A ``VectorStoreFileDeleted`` confirmation.
     public func delete(vectorStoreId: String, fileId: String) async throws -> VectorStoreFileDeleted {
-        try await client.delete(path: "vector_stores/\(vectorStoreId)/files/\(fileId)")
+        let validatedVectorStoreID = try vectorStoreId.validatePathComponent()
+        let validatedFileID = try fileId.validatePathComponent()
+        return try await client.delete(path: "vector_stores/\(validatedVectorStoreID)/files/\(validatedFileID)")
     }
 }

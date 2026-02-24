@@ -888,7 +888,7 @@ The [`Examples/`](Examples/) directory contains copy-paste-ready code:
 | Structured outputs (JSON Schema) | ✅ |
 | Embeddings, Images, Audio, Files, Models, Moderations | ✅ |
 | Fine-tuning, Batches, Vector Stores, Uploads | ✅ |
-| Realtime (WebSocket) | ⬜ |
+| WebSocket Mode | ✅ |
 
 ## CI/CD
 

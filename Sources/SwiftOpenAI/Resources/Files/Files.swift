@@ -48,9 +48,24 @@ public struct Files: Sendable {
 
     /// Returns a list of files.
     ///
+    /// - Parameters:
+    ///   - after: A cursor for pagination.
+    ///   - limit: Maximum number of files to return.
+    ///   - purpose: Filter files by purpose.
+    ///   - order: Sort order (`"asc"` or `"desc"`).
     /// - Returns: A list response containing file objects.
-    public func list() async throws -> ListResponse<FileObject> {
-        try await client.get(path: "files")
+    public func list(
+        after: String? = nil,
+        limit: Int? = nil,
+        purpose: String? = nil,
+        order: String? = nil
+    ) async throws -> ListResponse<FileObject> {
+        var queryItems: [URLQueryItem] = []
+        if let after { queryItems.append(URLQueryItem(name: "after", value: after)) }
+        if let limit { queryItems.append(URLQueryItem(name: "limit", value: String(limit))) }
+        if let purpose { queryItems.append(URLQueryItem(name: "purpose", value: purpose)) }
+        if let order { queryItems.append(URLQueryItem(name: "order", value: order)) }
+        return try await client.get(path: "files", queryItems: queryItems.isEmpty ? nil : queryItems)
     }
 
     /// Deletes a file.

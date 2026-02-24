@@ -107,14 +107,24 @@ struct HTTPClient: Sendable {
 
     /// Performs a request and decodes the JSON response.
     func perform<T: Decodable & Sendable>(request: URLRequest) async throws -> T {
-        let (data, response) = try await session.data(for: request)
+        let (data, response): (Data, URLResponse)
+        do {
+            (data, response) = try await session.data(for: request)
+        } catch let error as URLError {
+            throw mapURLError(error)
+        }
         try validateResponse(data: data, response: response)
         return try Self.decoder.decode(T.self, from: data)
     }
 
     /// Performs a request and returns raw `Data` (for file downloads, audio, etc.).
     func performRaw(request: URLRequest) async throws -> Data {
-        let (data, response) = try await session.data(for: request)
+        let (data, response): (Data, URLResponse)
+        do {
+            (data, response) = try await session.data(for: request)
+        } catch let error as URLError {
+            throw mapURLError(error)
+        }
         try validateResponse(data: data, response: response)
         return data
     }
@@ -127,7 +137,12 @@ struct HTTPClient: Sendable {
         // Linux: URLSession.AsyncBytes is unavailable in swift-corelibs-foundation.
         // Buffer the full response, then yield bytes. True incremental streaming
         // can be added via URLSessionDataDelegate in a future release.
-        let (data, response) = try await session.data(for: request)
+        let (data, response): (Data, URLResponse)
+        do {
+            (data, response) = try await session.data(for: request)
+        } catch let error as URLError {
+            throw mapURLError(error)
+        }
         try validateResponse(data: data, response: response)
         let byteStream = AsyncThrowingStream<UInt8, Error> { continuation in
             for byte in data {
@@ -138,7 +153,12 @@ struct HTTPClient: Sendable {
         return ServerSentEventsStream<T>(byteStream: byteStream, decoder: Self.decoder)
         #else
         // Apple platforms: true incremental streaming via URLSession.AsyncBytes.
-        let (bytes, response) = try await session.bytes(for: request)
+        let (bytes, response): (URLSession.AsyncBytes, URLResponse)
+        do {
+            (bytes, response) = try await session.bytes(for: request)
+        } catch let error as URLError {
+            throw mapURLError(error)
+        }
 
         guard let httpResponse = response as? HTTPURLResponse else {
             throw OpenAIError.connectionError(message: "Bad server response")
@@ -230,6 +250,8 @@ struct HTTPClient: Sendable {
             return .authenticationError(message: message)
         case 403:
             return .permissionDeniedError(message: message)
+        case 409:
+            return .conflictError(message: message)
         case 404:
             return .notFoundError(message: message)
         case 422:
@@ -241,5 +263,38 @@ struct HTTPClient: Sendable {
         default:
             return .apiError(statusCode: statusCode, message: message, type: body?.error.type, code: body?.error.code)
         }
+    }
+
+    private func mapURLError(_ error: URLError) -> OpenAIError {
+        switch error.code {
+        case .timedOut:
+            return .timeout
+        case .notConnectedToInternet, .networkConnectionLost, .cannotFindHost, .cannotConnectToHost:
+            return .connectionError(message: error.localizedDescription)
+        default:
+            return .connectionError(message: error.localizedDescription)
+        }
+    }
+}
+
+extension String {
+    func validatePathComponent() throws -> String {
+        guard !isEmpty else {
+            throw OpenAIError.apiError(
+                statusCode: 0,
+                message: "Path component cannot be empty.",
+                type: nil,
+                code: nil
+            )
+        }
+        guard !contains("/"), !contains("\\"), !contains("..") else {
+            throw OpenAIError.apiError(
+                statusCode: 0,
+                message: "Path component contains invalid characters.",
+                type: nil,
+                code: nil
+            )
+        }
+        return self
     }
 }
