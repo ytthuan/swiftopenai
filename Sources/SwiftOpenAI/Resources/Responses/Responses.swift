@@ -210,4 +210,28 @@ public struct Responses: Sendable {
         )
         return try await client.post(path: "responses/compact", body: params)
     }
+
+    #if canImport(Darwin)
+    // MARK: - WebSocket Mode
+
+    /// Opens a persistent WebSocket connection for low-latency multi-turn workflows.
+    ///
+    /// WebSocket mode keeps a connection open to `/v1/responses` and sends only
+    /// incremental input per turn, reducing per-turn overhead. Ideal for agentic
+    /// workflows with many tool-call round trips (up to ~40% faster end-to-end).
+    ///
+    /// Usage:
+    /// ```swift
+    /// let ws = client.responses.connectWebSocket()
+    /// await ws.connect()
+    /// let stream = try await ws.create(model: "gpt-5.2", input: .text("Hello"), store: false)
+    /// ```
+    ///
+    /// - Note: Connections are limited to 60 minutes. Reconnect when the limit is reached.
+    /// - Note: Only one response can be in-flight at a time per connection.
+    /// - Returns: A `ResponsesWebSocket` actor ready for use after calling `connect()`.
+    public func connectWebSocket() -> ResponsesWebSocket {
+        ResponsesWebSocket(configuration: client.configuration, session: client.session)
+    }
+    #endif
 }

@@ -31,4 +31,18 @@ public struct Configuration: Sendable {
         self.baseURL = baseURL
         self.timeoutInterval = timeoutInterval
     }
+
+#if canImport(Darwin)
+    /// Base URL for WebSocket connections derived from `baseURL`.
+    public var websocketBaseURL: URL {
+        var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: true)
+        let scheme = components?.scheme?.lowercased()
+        if scheme == "https" {
+            components?.scheme = "wss"
+        } else if scheme == "http" {
+            components?.scheme = "ws"
+        }
+        return components?.url ?? baseURL
+    }
+#endif
 }

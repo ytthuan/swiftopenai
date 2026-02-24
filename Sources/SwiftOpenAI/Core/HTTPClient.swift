@@ -224,8 +224,6 @@ struct HTTPClient: Sendable {
     private func parseAPIError(data: Data, statusCode: Int) throws -> OpenAIError {
         let body = try? Self.decoder.decode(APIErrorBody.self, from: data)
         let message = body?.error.message ?? "Unknown error"
-        let type = body?.error.type
-        let code = body?.error.code
 
         switch statusCode {
         case 401:
@@ -241,7 +239,7 @@ struct HTTPClient: Sendable {
         case 500...:
             return .internalServerError(message: message)
         default:
-            return .apiError(statusCode: statusCode, message: message, type: type, code: code)
+            return .apiError(statusCode: statusCode, message: message, type: body?.error.type, code: body?.error.code)
         }
     }
 }
