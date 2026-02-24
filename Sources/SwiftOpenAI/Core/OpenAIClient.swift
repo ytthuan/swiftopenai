@@ -52,6 +52,12 @@ public final class OpenAI: Sendable {
     /// Access the Batches API.
     public let batches: Batches
 
+    /// Access the Completions API (legacy).
+    public let completions: Completions
+
+    /// Access the Uploads API.
+    public let uploads: Uploads
+
     // MARK: - Initialization
 
     /// Creates a new OpenAI client.
@@ -90,5 +96,7 @@ public final class OpenAI: Sendable {
         self.vectorStores = VectorStores(client: httpClient)
         self.fineTuning = FineTuning(client: httpClient)
         self.batches = Batches(client: httpClient)
+        self.uploads = Uploads(client: httpClient)
+        self.completions = Completions(client: httpClient)
     }
 }
