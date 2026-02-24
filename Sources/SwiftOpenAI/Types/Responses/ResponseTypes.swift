@@ -18,6 +18,8 @@ public struct Response: Codable, Sendable {
     public let usage: ResponseUsage?
     /// Arbitrary key-value metadata attached to the response.
     public let metadata: [String: String]?
+    /// The ID of the previous response in a multi-turn conversation.
+    public let previousResponseId: String?
 }
 
 /// An output item in a response.
@@ -99,6 +101,7 @@ struct ResponseCreateParams: Encodable, Sendable {
     let stream: Bool?
     let store: Bool?
     let metadata: [String: String]?
+    let previousResponseId: String?
 }
 
 /// A streamed event from the Responses API.

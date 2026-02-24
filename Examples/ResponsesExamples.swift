@@ -10,7 +10,8 @@ import Foundation
 /// Creates an OpenAI client for use in the examples.
 private func makeClient() -> OpenAI {
     let apiKey = ProcessInfo.processInfo.environment["OPENAI_API_KEY"] ?? ""
-    return OpenAI(apiKey: apiKey)
+    let baseURL = ProcessInfo.processInfo.environment["OPENAI_BASE_URL"].flatMap { URL(string: $0) }
+    return OpenAI(apiKey: apiKey, baseURL: baseURL)
 }
 
 // MARK: - 1. Simple Text Response
@@ -35,34 +36,76 @@ func simpleTextResponse() async throws {
     }
 }
 
-// MARK: - 2. Multi-Turn Conversation
+// MARK: - 2. Multi-Turn Conversation with previousResponseId
 
-/// Demonstrates a multi-turn conversation by building up message history.
+/// Demonstrates multi-turn conversations using `previousResponseId`.
+///
+/// The Responses API tracks conversation history server-side. Instead of
+/// manually accumulating messages, you simply pass the previous response's
+/// ID to continue the conversation. The model sees all prior turns automatically.
 func multiTurnConversation() async throws {
+    let client = makeClient()
+
+    // Turn 1 — start the conversation
+    let response1 = try await client.responses.create(
+        model: "gpt-4o",
+        input: .text("My name is Alice. What's a good programming language to learn?"),
+        store: true  // Must store to enable multi-turn via previousResponseId
+    )
+    let turn1Text = response1.output.first?.content?.first?.text ?? ""
+    print("Turn 1 — Assistant: \(turn1Text)")
+    print("  Response ID: \(response1.id)")
+
+    // Turn 2 — continue the conversation by passing the previous response ID
+    // No need to re-send the full message history!
+    let response2 = try await client.responses.create(
+        model: "gpt-4o",
+        input: .text("Why did you recommend that? Also, do you remember my name?"),
+        previousResponseId: response1.id  // ← Links to the previous turn
+    )
+    let turn2Text = response2.output.first?.content?.first?.text ?? ""
+    print("Turn 2 — Assistant: \(turn2Text)")
+    print("  Previous Response ID: \(response2.previousResponseId ?? "nil")")
+
+    // Turn 3 — chain another turn
+    let response3 = try await client.responses.create(
+        model: "gpt-4o",
+        input: .text("Can you give me a simple code example in that language?"),
+        previousResponseId: response2.id
+    )
+    let turn3Text = response3.output.first?.content?.first?.text ?? ""
+    print("Turn 3 — Assistant: \(turn3Text)")
+}
+
+// MARK: - 3. Multi-Turn with Manual History (Alternative)
+
+/// For cases where you don't want server-side storage, you can also pass
+/// the full message history manually — similar to the Chat Completions API.
+func multiTurnManualHistory() async throws {
     let client = makeClient()
 
     // Turn 1
     let response1 = try await client.responses.create(
         model: "gpt-4o",
-        input: .text("My name is Alice. What's a good programming language to learn?")
+        input: .text("What continent is Brazil in?")
     )
     let turn1Text = response1.output.first?.content?.first?.text ?? ""
-    print("Assistant: \(turn1Text)")
+    print("Turn 1 — Assistant: \(turn1Text)")
 
-    // Turn 2 — include conversation history so the model has context.
+    // Turn 2 — pass the full conversation history as messages
     let response2 = try await client.responses.create(
         model: "gpt-4o",
         input: .messages([
-            ResponseInputMessage(role: "user", content: "My name is Alice. What's a good programming language to learn?"),
+            ResponseInputMessage(role: "user", content: "What continent is Brazil in?"),
             ResponseInputMessage(role: "assistant", content: turn1Text),
-            ResponseInputMessage(role: "user", content: "Why did you recommend that? Also, do you remember my name?"),
+            ResponseInputMessage(role: "user", content: "What is its largest city?"),
         ])
     )
     let turn2Text = response2.output.first?.content?.first?.text ?? ""
-    print("Assistant: \(turn2Text)")
+    print("Turn 2 — Assistant: \(turn2Text)")
 }
 
-// MARK: - 3. With Instructions (System Prompt)
+// MARK: - 4. With Instructions (System Prompt)
 
 /// Uses the `instructions` parameter to set a system-level persona.
 func responseWithInstructions() async throws {
@@ -78,7 +121,7 @@ func responseWithInstructions() async throws {
     print("Teacher says: \(text)")
 }
 
-// MARK: - 4. Streaming Responses
+// MARK: - 5. Streaming Responses
 
 /// Streams a response and prints events as they arrive.
 func streamingResponse() async throws {
@@ -100,7 +143,7 @@ func streamingResponse() async throws {
     }
 }
 
-// MARK: - 5. Retrieve and Delete
+// MARK: - 6. Retrieve and Delete
 
 /// Creates a stored response, retrieves it by ID, then deletes it.
 func retrieveAndDelete() async throws {
@@ -124,7 +167,7 @@ func retrieveAndDelete() async throws {
     print("Deleted response ID: \(deleted.id)")
 }
 
-// MARK: - 6. With Metadata
+// MARK: - 7. With Metadata
 
 /// Attaches arbitrary key-value metadata to a response for tracking.
 func responseWithMetadata() async throws {
@@ -148,7 +191,7 @@ func responseWithMetadata() async throws {
     }
 }
 
-// MARK: - 7. Controlling Output
+// MARK: - 8. Controlling Output
 
 /// Demonstrates temperature, maxOutputTokens, and topP parameters.
 func controlledOutput() async throws {
