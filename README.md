@@ -138,6 +138,22 @@ do {
 }
 ```
 
+## Examples
+
+The [`Examples/`](Examples/) directory contains comprehensive, copy-paste-ready code for every feature:
+
+| File | What's Inside |
+|------|---------------|
+| [`BasicUsage.swift`](Examples/BasicUsage.swift) | Models, Embeddings, Moderations, Images, Error handling |
+| [`ChatExamples.swift`](Examples/ChatExamples.swift) | Simple chat, multi-turn conversation, streaming, tool calling, JSON mode |
+| [`ResponsesExamples.swift`](Examples/ResponsesExamples.swift) | Responses API: text, conversation, streaming, instructions, retrieve/delete |
+| [`AdvancedExamples.swift`](Examples/AdvancedExamples.swift) | Audio, Fine-tuning, Batches, Vector Stores, Uploads, Custom config |
+
+## CI/CD
+
+- **CI** — Every push/PR runs `swift build && swift test` on macOS and Linux via GitHub Actions
+- **Release** — Tag with `v*` (e.g. `git tag v0.1.0 && git push --tags`) to auto-create a GitHub Release
+
 ## Project Status
 
 🚧 **Work in progress** — Core API coverage is complete.
