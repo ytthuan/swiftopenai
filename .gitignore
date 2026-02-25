@@ -76,3 +76,10 @@ fastlane/test_output
 # Local test app (not part of the package)
 ExampleApp/
 test-report.md
+
+# Sensitive files
+.env
+.env.*
+*.pem
+*.key
+*.p12

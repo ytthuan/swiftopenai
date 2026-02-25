@@ -26,7 +26,23 @@ func makeMockClient(json: String, statusCode: Int = 200) -> OpenAI {
         )!
     )
 
-    return OpenAI(apiKey: "test-key", session: session)
+    return OpenAI(apiKey: "test-key", maxRetries: 0, session: session)
+}
+
+/// Creates an OpenAI client with custom retry configuration for testing.
+func makeMockClientWithRetry(
+    maxRetries: Int,
+    retryDelay: TimeInterval = 0.01
+) -> OpenAI {
+    let config = URLSessionConfiguration.ephemeral
+    config.protocolClasses = [MockURLProtocol.self]
+    let session = URLSession(configuration: config)
+    return OpenAI(
+        apiKey: "test-key",
+        maxRetries: maxRetries,
+        retryDelay: retryDelay,
+        session: session
+    )
 }
 
 /// Shared serialized suite for all tests that use MockURLProtocol,

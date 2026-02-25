@@ -39,6 +39,45 @@ public struct Response: Codable, Sendable {
     /// Error information, if the response failed.
     public let error: ResponseError?
 
+    /// Creates a `Response` instance (useful for testing).
+    public init(
+        id: String,
+        object: String = "response",
+        createdAt: Int? = nil,
+        model: String,
+        output: [ResponseOutputItem],
+        status: String = "completed",
+        usage: ResponseUsage? = nil,
+        metadata: [String: String]? = nil,
+        previousResponseId: String? = nil,
+        systemFingerprint: String? = nil,
+        store: Bool? = nil,
+        temperature: Double? = nil,
+        topP: Double? = nil,
+        maxOutputTokens: Int? = nil,
+        truncation: String? = nil,
+        incompleteDetails: IncompleteDetails? = nil,
+        error: ResponseError? = nil
+    ) {
+        self.id = id
+        self.object = object
+        self.createdAt = createdAt
+        self.model = model
+        self.output = output
+        self.status = status
+        self.usage = usage
+        self.metadata = metadata
+        self.previousResponseId = previousResponseId
+        self.systemFingerprint = systemFingerprint
+        self.store = store
+        self.temperature = temperature
+        self.topP = topP
+        self.maxOutputTokens = maxOutputTokens
+        self.truncation = truncation
+        self.incompleteDetails = incompleteDetails
+        self.error = error
+    }
+
     /// Details about why a response is incomplete.
     public struct IncompleteDetails: Codable, Sendable {
         /// The reason the response is incomplete.
@@ -78,21 +117,65 @@ public struct ResponseDeleted: Codable, Sendable {
 }
 
 /// Strategy for truncating input when context exceeds the model's limit.
-public enum TruncationStrategy: String, Codable, Sendable {
+public enum TruncationStrategy: Codable, Sendable {
     /// Automatically truncate from the beginning of the conversation.
     case auto
     /// Disable truncation (request will fail if too long).
     case disabled
+    /// An unknown strategy returned by the API.
+    case other(String)
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let value = try container.decode(String.self)
+        switch value {
+        case "auto": self = .auto
+        case "disabled": self = .disabled
+        default: self = .other(value)
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case .auto: try container.encode("auto")
+        case .disabled: try container.encode("disabled")
+        case .other(let value): try container.encode(value)
+        }
+    }
 }
 
 /// The service tier for processing the request.
-public enum ServiceTier: String, Codable, Sendable {
+public enum ServiceTier: Codable, Sendable {
     /// Default tier.
     case auto
     /// Default tier (alias for backward compatibility).
     case `default`
     /// Lower-latency tier.
     case flex
+    /// An unknown tier returned by the API.
+    case other(String)
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let value = try container.decode(String.self)
+        switch value {
+        case "auto": self = .auto
+        case "default": self = .default
+        case "flex": self = .flex
+        default: self = .other(value)
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case .auto: try container.encode("auto")
+        case .default: try container.encode("default")
+        case .flex: try container.encode("flex")
+        case .other(let value): try container.encode(value)
+        }
+    }
 }
 
 // MARK: - Output Items
@@ -684,4 +767,16 @@ public struct ResponseStreamEvent: Codable, Sendable {
     public let outputIndex: Int?
     /// The content index within an output item.
     public let contentIndex: Int?
+    /// The item ID associated with this event.
+    public let itemId: String?
+    /// The incremental text content (for content.done events).
+    public let text: String?
+    /// The function call arguments (for function_call_arguments events).
+    public let arguments: String?
+    /// The function name (for function_call_arguments.done events).
+    public let name: String?
+    /// The call ID for function calls.
+    public let callId: String?
+    /// The sequence number for ordering events.
+    public let sequenceNumber: Int?
 }

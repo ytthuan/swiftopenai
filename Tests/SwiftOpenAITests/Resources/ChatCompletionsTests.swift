@@ -99,4 +99,41 @@ extension MockAPITests {
         #expect(toolCalls[0].function.name == "get_weather")
         #expect(toolCalls[0].function.arguments == "{\"location\":\"Paris\"}")
     }
+
+    @Test func createChatCompletionStream() async throws {
+        let json = """
+        data: {"id":"chatcmpl-stream-1","object":"chat.completion.chunk","created":1234567890,"model":"gpt-4o","choices":[{"index":0,"delta":{"role":"assistant","content":"Hello"},"finish_reason":null}]}
+
+        data: {"id":"chatcmpl-stream-1","object":"chat.completion.chunk","created":1234567890,"model":"gpt-4o","choices":[{"index":0,"delta":{"content":" world"},"finish_reason":"stop"}]}
+
+        data: [DONE]
+
+        """
+        let client = makeMockClient(json: json)
+        let stream = try await client.chat.completions.createStream(
+            model: "gpt-4o",
+            messages: [.user("Hello!")]
+        )
+
+        var chunks: [ChatCompletionChunk] = []
+        for try await chunk in stream {
+            chunks.append(chunk)
+        }
+
+        #expect(chunks.count == 2)
+
+        let first = chunks[0]
+        #expect(first.id == "chatcmpl-stream-1")
+        #expect(first.object == "chat.completion.chunk")
+        #expect(first.model == "gpt-4o")
+        #expect(first.choices[0].delta?.content == "Hello")
+        #expect(first.choices[0].finishReason == nil)
+
+        let second = chunks[1]
+        #expect(second.id == "chatcmpl-stream-1")
+        #expect(second.object == "chat.completion.chunk")
+        #expect(second.model == "gpt-4o")
+        #expect(second.choices[0].delta?.content == " world")
+        #expect(second.choices[0].finishReason == "stop")
+    }
 }

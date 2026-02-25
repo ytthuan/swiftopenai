@@ -40,7 +40,16 @@ struct MultipartFormData: Sendable {
 
     /// Encodes all parts into the final `Data` body.
     func encode() -> Data {
+        let boundaryBytes = "--\(boundary)".utf8.count
+        let overhead = parts.count * (boundaryBytes + 200) + boundaryBytes + 10
+        let dataSize = parts.reduce(0) { total, part in
+            switch part {
+            case .field(_, let value): return total + value.utf8.count
+            case .file(_, _, _, let data): return total + data.count
+            }
+        }
         var body = Data()
+        body.reserveCapacity(overhead + dataSize)
         let crlf = "\r\n"
 
         for part in parts {
@@ -58,7 +67,7 @@ struct MultipartFormData: Sendable {
                 let safeName = Self.sanitizeHeaderValue(name)
                 let safeFilename = Self.sanitizeHeaderValue(filename)
                 body.append("Content-Disposition: form-data; name=\"\(safeName)\"; filename=\"\(safeFilename)\"\(crlf)")
-                body.append("Content-Type: \(mimeType)\(crlf)")
+                body.append("Content-Type: \(Self.sanitizeHeaderValue(mimeType))\(crlf)")
                 body.append(crlf)
                 body.append(data)
                 body.append(crlf)

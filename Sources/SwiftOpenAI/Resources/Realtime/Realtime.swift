@@ -38,6 +38,7 @@ import Foundation
 public actor RealtimeConnection {
     private let configuration: Configuration
     private let model: String
+    private var session: URLSession?
     private var webSocketTask: URLSessionWebSocketTask?
     private var isConnected = false
     
@@ -67,30 +68,32 @@ public actor RealtimeConnection {
             throw OpenAIError.connectionError(message: "Realtime session already connected")
         }
         
-        // Build WebSocket URL
-        let baseString = configuration.baseURL.absoluteString
-        let wsBase = baseString
-            .replacingOccurrences(of: "https://", with: "wss://")
-            .replacingOccurrences(of: "http://", with: "ws://")
-        let separator = wsBase.hasSuffix("/") ? "" : "/"
-        let urlString = wsBase + separator + "realtime?model=\(model)"
+        // Build WebSocket URL using Configuration's websocketBaseURL
+        guard var components = URLComponents(url: configuration.websocketBaseURL, resolvingAgainstBaseURL: true) else {
+            throw OpenAIError.connectionError(message: "Invalid Realtime base URL: \(configuration.websocketBaseURL)")
+        }
+        let basePath = components.path.hasSuffix("/") ? String(components.path.dropLast()) : components.path
+        components.path = basePath + "/realtime"
+        components.queryItems = [URLQueryItem(name: "model", value: model)]
         
-        guard let url = URL(string: urlString) else {
-            throw OpenAIError.connectionError(message: "Invalid Realtime URL: \(urlString)")
+        guard let url = components.url else {
+            throw OpenAIError.connectionError(message: "Invalid Realtime URL from components")
         }
         
         var request = URLRequest(url: url)
         request.setValue("Bearer \(configuration.apiKey)", forHTTPHeaderField: "Authorization")
-        request.setValue("SwiftOpenAI/0.3.1", forHTTPHeaderField: "User-Agent")
+        request.setValue("realtime=v1", forHTTPHeaderField: "OpenAI-Beta")
+        request.setValue(SDK.userAgent, forHTTPHeaderField: "User-Agent")
         if let org = configuration.organization {
-            request.setValue(org, forHTTPHeaderField: "OpenAI-Organization")
+            request.setValue(org.replacingOccurrences(of: "\r", with: "").replacingOccurrences(of: "\n", with: ""), forHTTPHeaderField: "OpenAI-Organization")
         }
         if let project = configuration.project {
-            request.setValue(project, forHTTPHeaderField: "OpenAI-Project")
+            request.setValue(project.replacingOccurrences(of: "\r", with: "").replacingOccurrences(of: "\n", with: ""), forHTTPHeaderField: "OpenAI-Project")
         }
         
-        let session = URLSession(configuration: .default)
-        let task = session.webSocketTask(with: request)
+        let newSession = URLSession(configuration: .default)
+        self.session = newSession
+        let task = newSession.webSocketTask(with: request)
         self.webSocketTask = task
         task.resume()
         self.isConnected = true
@@ -144,6 +147,8 @@ public actor RealtimeConnection {
     private func markDisconnected() {
         isConnected = false
         webSocketTask = nil
+        session?.invalidateAndCancel()
+        session = nil
     }
     
     // MARK: - Send Client Events
@@ -215,6 +220,8 @@ public actor RealtimeConnection {
         webSocketTask?.cancel(with: .goingAway, reason: nil)
         isConnected = false
         webSocketTask = nil
+        session?.invalidateAndCancel()
+        session = nil
     }
 }
 

@@ -102,9 +102,20 @@ public struct ChatCompletions: Sendable {
         n: Int? = nil,
         stop: ChatCompletionStop? = nil,
         maxCompletionTokens: Int? = nil,
+        presencePenalty: Double? = nil,
+        frequencyPenalty: Double? = nil,
+        logitBias: [String: Int]? = nil,
+        logprobs: Bool? = nil,
+        topLogprobs: Int? = nil,
         user: String? = nil,
         tools: [ChatCompletionTool]? = nil,
-        toolChoice: ChatCompletionToolChoice? = nil
+        toolChoice: ChatCompletionToolChoice? = nil,
+        parallelToolCalls: Bool? = nil,
+        seed: Int? = nil,
+        responseFormat: ChatCompletionResponseFormat? = nil,
+        serviceTier: String? = nil,
+        store: Bool? = nil,
+        metadata: [String: String]? = nil
     ) async throws -> ServerSentEventsStream<ChatCompletionChunk> {
         let params = ChatCompletionCreateParams(
             model: model,
@@ -115,20 +126,20 @@ public struct ChatCompletions: Sendable {
             stream: true,
             stop: stop,
             maxCompletionTokens: maxCompletionTokens,
-            presencePenalty: nil,
-            frequencyPenalty: nil,
-            logitBias: nil,
-            logprobs: nil,
-            topLogprobs: nil,
+            presencePenalty: presencePenalty,
+            frequencyPenalty: frequencyPenalty,
+            logitBias: logitBias,
+            logprobs: logprobs,
+            topLogprobs: topLogprobs,
             user: user,
             tools: tools,
             toolChoice: toolChoice,
-            parallelToolCalls: nil,
-            seed: nil,
-            responseFormat: nil,
-            serviceTier: nil,
-            store: nil,
-            metadata: nil
+            parallelToolCalls: parallelToolCalls,
+            seed: seed,
+            responseFormat: responseFormat,
+            serviceTier: serviceTier,
+            store: store,
+            metadata: metadata
         )
         return try await client.postStream(path: "chat/completions", body: params)
     }

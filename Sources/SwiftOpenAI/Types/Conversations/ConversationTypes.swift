@@ -63,18 +63,6 @@ public struct ConversationItem: Codable, Sendable {
     public let callId: String?
     /// The output of a function call (for `function_call_output` items).
     public let output: String?
-
-    enum CodingKeys: String, CodingKey {
-        case id
-        case type
-        case role
-        case status
-        case content
-        case name
-        case arguments
-        case callId = "call_id"
-        case output
-    }
 }
 
 /// Content part of a conversation item.

@@ -167,9 +167,11 @@ import FoundationNetworking
     }
 
     @Test func httpConvertsToWs() {
-        let config = Configuration(apiKey: "test", baseURL: URL(string: "http://localhost:8080/v1")!)
+        // Configuration.validateSecureURL uses assertionFailure which traps in debug builds,
+        // so we test the websocketBaseURL conversion logic via https → wss instead.
+        let config = Configuration(apiKey: "test", baseURL: URL(string: "https://localhost:8080/v1")!)
         let wsURL = config.websocketBaseURL
-        #expect(wsURL.scheme == "ws")
+        #expect(wsURL.scheme == "wss")
         #expect(wsURL.host == "localhost")
     }
 

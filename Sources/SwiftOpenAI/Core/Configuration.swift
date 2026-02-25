@@ -18,30 +18,40 @@ public struct Configuration: Sendable {
     /// Request timeout interval in seconds.
     public let timeoutInterval: TimeInterval
 
+    /// Maximum number of retries for failed requests (429, 5xx). Default is 2. Set to 0 to disable.
+    public let maxRetries: Int
+
+    /// Base delay for exponential backoff in seconds. Default is 0.5.
+    public let retryDelay: TimeInterval
+
     public init(
         apiKey: String,
         organization: String? = nil,
         project: String? = nil,
         baseURL: URL = URL(string: "https://api.openai.com/v1")!,
-        timeoutInterval: TimeInterval = 600
+        timeoutInterval: TimeInterval = 600,
+        maxRetries: Int = 2,
+        retryDelay: TimeInterval = 0.5
     ) {
         precondition(!apiKey.isEmpty, "SwiftOpenAI: API key must not be empty")
+        precondition(maxRetries >= 0, "SwiftOpenAI: maxRetries must be non-negative")
+        precondition(retryDelay >= 0, "SwiftOpenAI: retryDelay must be non-negative")
         Self.validateSecureURL(baseURL)
         self.apiKey = apiKey
         self.organization = organization
         self.project = project
         self.baseURL = baseURL
         self.timeoutInterval = timeoutInterval
+        self.maxRetries = maxRetries
+        self.retryDelay = retryDelay
     }
 
     /// Validates that the base URL uses a secure scheme.
-    /// Logs a warning for non-HTTPS URLs in debug builds.
+    /// Always compiled; uses `assertionFailure` so debug builds trap while release builds continue.
     static func validateSecureURL(_ baseURL: URL) {
-        #if DEBUG
         if let scheme = baseURL.scheme?.lowercased(), scheme != "https", scheme != "wss" {
-            print("⚠️ SwiftOpenAI: Base URL uses insecure scheme '\(scheme)'. Use HTTPS in production.")
+            assertionFailure("SwiftOpenAI: Base URL uses insecure scheme '\(scheme)'. Use HTTPS in production to protect API keys.")
         }
-        #endif
     }
 
 #if canImport(Darwin)

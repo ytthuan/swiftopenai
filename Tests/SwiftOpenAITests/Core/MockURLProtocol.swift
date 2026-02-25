@@ -11,6 +11,13 @@ final class MockURLProtocol: URLProtocol, @unchecked Sendable {
     /// The mock response to return. Set before each test.
     nonisolated(unsafe) static var mockResponse: (Data, HTTPURLResponse)?
 
+    /// Queue of responses for multi-response tests (e.g., retry scenarios).
+    /// Each call to startLoading pops the first element.
+    nonisolated(unsafe) static var mockResponses: [(Data, HTTPURLResponse)] = []
+
+    /// Number of requests received.
+    nonisolated(unsafe) static var requestCount: Int = 0
+
     /// Optionally capture the last request for assertion.
     nonisolated(unsafe) static var lastRequest: URLRequest?
 
@@ -43,7 +50,13 @@ final class MockURLProtocol: URLProtocol, @unchecked Sendable {
             Self.lastRequestBody = data
         }
 
-        if let (data, response) = Self.mockResponse {
+        Self.requestCount += 1
+
+        if !Self.mockResponses.isEmpty {
+            let (data, response) = Self.mockResponses.removeFirst()
+            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            client?.urlProtocol(self, didLoad: data)
+        } else if let (data, response) = Self.mockResponse {
             client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
             client?.urlProtocol(self, didLoad: data)
         }
@@ -55,6 +68,8 @@ final class MockURLProtocol: URLProtocol, @unchecked Sendable {
     /// Reset mock state between tests.
     static func reset() {
         mockResponse = nil
+        mockResponses = []
+        requestCount = 0
         lastRequest = nil
         lastRequestBody = nil
     }

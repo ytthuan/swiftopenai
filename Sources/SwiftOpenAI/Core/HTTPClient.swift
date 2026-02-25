@@ -29,6 +29,8 @@ struct HTTPClient: Sendable {
             sessionConfig.httpShouldSetCookies = false
             sessionConfig.httpCookieAcceptPolicy = .never
             sessionConfig.tlsMinimumSupportedProtocolVersion = .TLSv12
+            #else
+            sessionConfig.httpShouldSetCookies = false
             #endif
             self.session = URLSession(configuration: sessionConfig)
         }
@@ -71,16 +73,18 @@ struct HTTPClient: Sendable {
         var request = URLRequest(url: url)
         request.httpMethod = method
         request.setValue("Bearer \(configuration.apiKey)", forHTTPHeaderField: "Authorization")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if body != nil {
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        }
         request.setValue("gzip, deflate", forHTTPHeaderField: "Accept-Encoding")
         request.setValue("keep-alive", forHTTPHeaderField: "Connection")
-        request.setValue("SwiftOpenAI/0.4.0", forHTTPHeaderField: "User-Agent")
+        request.setValue(SDK.userAgent, forHTTPHeaderField: "User-Agent")
 
         if let org = configuration.organization {
-            request.setValue(org, forHTTPHeaderField: "OpenAI-Organization")
+            request.setValue(Self.sanitizeHeaderValue(org), forHTTPHeaderField: "OpenAI-Organization")
         }
         if let project = configuration.project {
-            request.setValue(project, forHTTPHeaderField: "OpenAI-Project")
+            request.setValue(Self.sanitizeHeaderValue(project), forHTTPHeaderField: "OpenAI-Project")
         }
 
         if let body {
@@ -108,28 +112,34 @@ struct HTTPClient: Sendable {
         request.setValue(formData.contentType, forHTTPHeaderField: "Content-Type")
         request.setValue("gzip, deflate", forHTTPHeaderField: "Accept-Encoding")
         request.setValue("keep-alive", forHTTPHeaderField: "Connection")
-        request.setValue("SwiftOpenAI/0.4.0", forHTTPHeaderField: "User-Agent")
+        request.setValue(SDK.userAgent, forHTTPHeaderField: "User-Agent")
 
         if let org = configuration.organization {
-            request.setValue(org, forHTTPHeaderField: "OpenAI-Organization")
+            request.setValue(Self.sanitizeHeaderValue(org), forHTTPHeaderField: "OpenAI-Organization")
         }
         if let project = configuration.project {
-            request.setValue(project, forHTTPHeaderField: "OpenAI-Project")
+            request.setValue(Self.sanitizeHeaderValue(project), forHTTPHeaderField: "OpenAI-Project")
         }
 
         request.httpBody = formData.encode()
         return request
     }
 
+    // MARK: - Header Sanitization
+
+    /// Strips CR and LF characters to prevent HTTP header injection.
+    private static func sanitizeHeaderValue(_ value: String) -> String {
+        value
+            .replacingOccurrences(of: "\r", with: "")
+            .replacingOccurrences(of: "\n", with: "")
+    }
+
     // MARK: - Request Execution
 
     /// Performs a request and decodes the JSON response.
     func perform<T: Decodable & Sendable>(request: URLRequest) async throws -> T {
-        let (data, response): (Data, URLResponse)
-        do {
-            (data, response) = try await session.data(for: request)
-        } catch let error as URLError {
-            throw mapURLError(error)
+        let (data, response) = try await performWithRetry(request: request) { req in
+            try await session.data(for: req)
         }
         try validateResponse(data: data, response: response)
         return try Self.decoder.decode(T.self, from: data)
@@ -137,14 +147,56 @@ struct HTTPClient: Sendable {
 
     /// Performs a request and returns raw `Data` (for file downloads, audio, etc.).
     func performRaw(request: URLRequest) async throws -> Data {
-        let (data, response): (Data, URLResponse)
-        do {
-            (data, response) = try await session.data(for: request)
-        } catch let error as URLError {
-            throw mapURLError(error)
+        let (data, response) = try await performWithRetry(request: request) { req in
+            try await session.data(for: req)
         }
         try validateResponse(data: data, response: response)
         return data
+    }
+
+    /// Performs a request with automatic retry for transient errors (429, 5xx).
+    private func performWithRetry(request: URLRequest, operation: (URLRequest) async throws -> (Data, URLResponse)) async throws -> (Data, URLResponse) {
+        let maxRetries = configuration.maxRetries
+        for attempt in 0...maxRetries {
+            let (data, response): (Data, URLResponse)
+            do {
+                (data, response) = try await operation(request)
+            } catch let error as URLError {
+                // Connection errors are not retryable
+                throw mapURLError(error)
+            }
+
+            guard let httpResponse = response as? HTTPURLResponse else {
+                return (data, response)
+            }
+
+            let statusCode = httpResponse.statusCode
+            let isRetryable = statusCode == 429 || statusCode >= 500
+            let isLastAttempt = attempt == maxRetries
+
+            if isRetryable && !isLastAttempt {
+                let delay = min(max(retryDelay(for: attempt, response: httpResponse), 0), 300)
+                try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                continue
+            }
+
+            return (data, response)
+        }
+        // This should never be reached, but satisfy the compiler
+        fatalError("Retry loop exited unexpectedly")
+    }
+
+    /// Calculates the retry delay for a given attempt, respecting Retry-After header.
+    private func retryDelay(for attempt: Int, response: HTTPURLResponse) -> TimeInterval {
+        // Respect Retry-After header if present
+        if let retryAfterString = response.value(forHTTPHeaderField: "Retry-After"),
+           let retryAfter = TimeInterval(retryAfterString) {
+            return retryAfter
+        }
+        // Exponential backoff with jitter
+        let baseDelay = configuration.retryDelay * pow(2.0, Double(attempt))
+        let jitter = Double.random(in: 0...0.25)
+        return baseDelay + jitter
     }
 
     /// Performs a streaming request and returns an SSE `AsyncSequence`.

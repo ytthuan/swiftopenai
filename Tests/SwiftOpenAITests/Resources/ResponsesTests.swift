@@ -469,4 +469,68 @@ extension MockAPITests {
         let response = try HTTPClient.decoder.decode(Response.self, from: Data(json.utf8))
         #expect(response.outputText == "Resolved text")
     }
+
+    @Test func decodeFunctionCallArgumentsDoneStreamEvent() async throws {
+        let json = """
+        {
+            "type": "response.function_call_arguments.done",
+            "item_id": "item_001",
+            "output_index": 0,
+            "content_index": 0,
+            "call_id": "call_abc123",
+            "name": "get_weather",
+            "arguments": "{\\"location\\": \\"San Francisco\\"}",
+            "sequence_number": 5
+        }
+        """.data(using: .utf8)!
+
+        let event = try HTTPClient.decoder.decode(ResponseStreamEvent.self, from: json)
+        #expect(event.type == "response.function_call_arguments.done")
+        #expect(event.itemId == "item_001")
+        #expect(event.outputIndex == 0)
+        #expect(event.contentIndex == 0)
+        #expect(event.callId == "call_abc123")
+        #expect(event.name == "get_weather")
+        #expect(event.arguments == "{\"location\": \"San Francisco\"}")
+        #expect(event.sequenceNumber == 5)
+        #expect(event.text == nil)
+        #expect(event.delta == nil)
+        #expect(event.response == nil)
+    }
+
+    @Test func createResponseStream() async throws {
+        let json = """
+        data: {"type":"response.output_text.delta","delta":"Hel","output_index":0,"content_index":0}
+
+        data: {"type":"response.output_text.delta","delta":"lo!","output_index":0,"content_index":0}
+
+        data: {"type":"response.completed","response":{"id":"resp-stream-done","object":"response","created_at":1234567890,"model":"gpt-4o","output":[],"status":"completed"}}
+
+        data: [DONE]
+
+        """
+        let client = makeMockClient(json: json)
+        let stream = try await client.responses.createStream(
+            model: "gpt-4o",
+            input: .text("Hello!")
+        )
+
+        var events: [ResponseStreamEvent] = []
+        for try await event in stream {
+            events.append(event)
+        }
+
+        #expect(events.count == 3)
+
+        #expect(events[0].type == "response.output_text.delta")
+        #expect(events[0].delta == "Hel")
+
+        #expect(events[1].type == "response.output_text.delta")
+        #expect(events[1].delta == "lo!")
+
+        #expect(events[2].type == "response.completed")
+        let response = try #require(events[2].response)
+        #expect(response.id == "resp-stream-done")
+        #expect(response.status == "completed")
+    }
 }

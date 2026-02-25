@@ -42,7 +42,9 @@ public struct ServerSentEventsStream<T: Decodable & Sendable>: AsyncSequence, Se
         private var iterator: URLSession.AsyncBytes.AsyncIterator
         #endif
         private let decoder: JSONDecoder
-        private var buffer = Data()
+        private var buffer = Data(capacity: 4096)  // typical SSE line < 4KB
+        /// Maximum SSE buffer size (10 MB) to prevent unbounded memory growth.
+        private let maxBufferSize = 10 * 1024 * 1024
 
         #if canImport(FoundationNetworking)
         init(iterator: AsyncThrowingStream<UInt8, Error>.AsyncIterator, decoder: JSONDecoder) {
@@ -122,6 +124,11 @@ public struct ServerSentEventsStream<T: Decodable & Sendable>: AsyncSequence, Se
                     return try decoder.decode(T.self, from: buffer[payloadStart..<payloadEnd])
                 } else {
                     buffer.append(byte)
+                    if buffer.count > maxBufferSize {
+                        throw OpenAIError.bufferOverflow(
+                            message: "SSE buffer exceeded \(maxBufferSize) bytes"
+                        )
+                    }
                 }
             }
             return nil

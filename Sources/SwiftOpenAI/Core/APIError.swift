@@ -35,6 +35,9 @@ public enum OpenAIError: Error, Sendable {
 
     /// Request timed out.
     case timeout
+
+    /// SSE buffer exceeded maximum allowed size.
+    case bufferOverflow(message: String)
 }
 
 extension OpenAIError: LocalizedError {
@@ -62,6 +65,8 @@ extension OpenAIError: LocalizedError {
             return message
         case .timeout:
             return "Request timed out."
+        case .bufferOverflow(let message):
+            return message
         }
     }
 }

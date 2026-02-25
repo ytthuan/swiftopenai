@@ -79,6 +79,8 @@ public final class OpenAI: Sendable {
     ///   - project: Optional project ID.
     ///   - baseURL: Override the default API base URL.
     ///   - timeoutInterval: Request timeout in seconds (default: 600).
+    ///   - maxRetries: Maximum number of retries for failed requests (default: 2).
+    ///   - retryDelay: Base delay for exponential backoff in seconds (default: 0.5).
     ///   - session: Optional custom URLSession for testing.
     public init(
         apiKey: String,
@@ -86,6 +88,8 @@ public final class OpenAI: Sendable {
         project: String? = nil,
         baseURL: URL = URL(string: "https://api.openai.com/v1")!,
         timeoutInterval: TimeInterval = 600,
+        maxRetries: Int = 2,
+        retryDelay: TimeInterval = 0.5,
         session: URLSession? = nil
     ) {
         self.configuration = Configuration(
@@ -93,7 +97,9 @@ public final class OpenAI: Sendable {
             organization: organization,
             project: project,
             baseURL: baseURL,
-            timeoutInterval: timeoutInterval
+            timeoutInterval: timeoutInterval,
+            maxRetries: maxRetries,
+            retryDelay: retryDelay
         )
         self.httpClient = HTTPClient(configuration: configuration, session: session)
         self.models = Models(client: httpClient)
@@ -113,5 +119,14 @@ public final class OpenAI: Sendable {
         #if canImport(Darwin)
         self.realtime = Realtime(configuration: configuration)
         #endif
+    }
+
+    /// Shuts down the client by invalidating the underlying `URLSession`.
+    ///
+    /// Call this method when you are done using the client to release
+    /// connection resources. After calling `shutdown()`, any in-flight
+    /// requests will be cancelled and the client should not be reused.
+    public func shutdown() {
+        httpClient.session.invalidateAndCancel()
     }
 }
