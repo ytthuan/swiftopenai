@@ -27,7 +27,7 @@ public struct Transcriptions: Sendable {
         temperature: Double? = nil
     ) async throws -> Transcription {
         var formData = MultipartFormData()
-        formData.addFile(name: "file", filename: filename, mimeType: "audio/mpeg", data: file)
+        formData.addFile(name: "file", filename: filename, mimeType: mimeType(for: filename), data: file)
         formData.addField(name: "model", value: model)
         if let language { formData.addField(name: "language", value: language) }
         if let prompt { formData.addField(name: "prompt", value: prompt) }
@@ -42,5 +42,18 @@ public struct Transcriptions: Sendable {
         }
         
         return try await client.postMultipart(path: "audio/transcriptions", formData: formData)
+    }
+
+    private func mimeType(for filename: String) -> String {
+        let ext = (filename as NSString).pathExtension.lowercased()
+        switch ext {
+        case "mp3": return "audio/mpeg"
+        case "wav": return "audio/wav"
+        case "webm": return "audio/webm"
+        case "flac": return "audio/flac"
+        case "ogg": return "audio/ogg"
+        case "m4a": return "audio/mp4"
+        default: return "audio/mpeg"
+        }
     }
 }

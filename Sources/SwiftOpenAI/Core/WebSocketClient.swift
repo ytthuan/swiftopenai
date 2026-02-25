@@ -16,6 +16,7 @@ actor WebSocketClient {
     func connect() {
         guard task == nil else { return }
         let task = session.webSocketTask(with: request)
+        task.maximumMessageSize = 10 * 1024 * 1024
         self.task = task
         task.resume()
     }

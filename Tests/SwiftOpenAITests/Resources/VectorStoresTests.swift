@@ -102,4 +102,105 @@ extension MockAPITests {
         #expect(file.status == "completed")
         #expect(file.usageBytes == 512)
     }
+
+    @Test func createVectorStore() async throws {
+        let json = """
+        {
+            "id": "vs-new",
+            "object": "vector_store",
+            "created_at": 1234567890,
+            "name": "Test Store",
+            "status": "completed",
+            "usage_bytes": 0
+        }
+        """
+        let client = makeMockClient(json: json)
+        let store = try await client.vectorStores.create(name: "Test Store")
+
+        #expect(store.id == "vs-new")
+        #expect(store.name == "Test Store")
+        #expect(store.status == "completed")
+        #expect(MockURLProtocol.lastRequest?.url?.path.contains("vector_stores") == true)
+    }
+
+    @Test func updateVectorStore() async throws {
+        let json = """
+        {
+            "id": "vs-123",
+            "object": "vector_store",
+            "created_at": 1234567890,
+            "name": "Updated Store",
+            "status": "completed"
+        }
+        """
+        let client = makeMockClient(json: json)
+        let store = try await client.vectorStores.update("vs-123", name: "Updated Store")
+
+        #expect(store.id == "vs-123")
+        #expect(store.name == "Updated Store")
+        #expect(MockURLProtocol.lastRequest?.url?.path.contains("vector_stores") == true)
+    }
+
+    @Test func createVectorStoreFile() async throws {
+        let json = """
+        {
+            "id": "vsfile-001",
+            "object": "vector_store.file",
+            "created_at": 1234567890,
+            "vector_store_id": "vs-123",
+            "status": "in_progress",
+            "usage_bytes": 0
+        }
+        """
+        let client = makeMockClient(json: json)
+        let file = try await client.vectorStores.files.create(
+            vectorStoreId: "vs-123", fileId: "file-abc"
+        )
+
+        #expect(file.id == "vsfile-001")
+        #expect(file.vectorStoreId == "vs-123")
+        #expect(file.status == "in_progress")
+        #expect(MockURLProtocol.lastRequest?.url?.path.contains("vector_stores") == true)
+    }
+
+    @Test func listVectorStoreFiles() async throws {
+        let json = """
+        {
+            "object": "list",
+            "data": [
+                {
+                    "id": "vsfile-001",
+                    "object": "vector_store.file",
+                    "created_at": 1234567890,
+                    "vector_store_id": "vs-123",
+                    "status": "completed",
+                    "usage_bytes": 512
+                }
+            ],
+            "has_more": false
+        }
+        """
+        let client = makeMockClient(json: json)
+        let response = try await client.vectorStores.files.list(vectorStoreId: "vs-123")
+
+        #expect(response.data.count == 1)
+        #expect(response.hasMore == false)
+    }
+
+    @Test func deleteVectorStoreFile() async throws {
+        let json = """
+        {
+            "id": "file-abc",
+            "object": "vector_store.file.deleted",
+            "deleted": true
+        }
+        """
+        let client = makeMockClient(json: json)
+        let result = try await client.vectorStores.files.delete(
+            vectorStoreId: "vs-123", fileId: "file-abc"
+        )
+
+        #expect(result.id == "file-abc")
+        #expect(result.deleted == true)
+    }
 }

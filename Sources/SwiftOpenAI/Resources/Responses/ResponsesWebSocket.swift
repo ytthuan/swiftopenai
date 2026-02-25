@@ -57,13 +57,13 @@ public actor ResponsesWebSocket {
         var request = URLRequest(url: configuration.websocketBaseURL.appendingPathComponent("responses"))
         request.setValue("Bearer \(configuration.apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("SwiftOpenAI/0.2.0", forHTTPHeaderField: "User-Agent")
+        request.setValue(SDK.userAgent, forHTTPHeaderField: "User-Agent")
 
         if let organization = configuration.organization {
-            request.setValue(organization, forHTTPHeaderField: "OpenAI-Organization")
+            request.setValue(organization.replacingOccurrences(of: "\r", with: "").replacingOccurrences(of: "\n", with: ""), forHTTPHeaderField: "OpenAI-Organization")
         }
         if let project = configuration.project {
-            request.setValue(project, forHTTPHeaderField: "OpenAI-Project")
+            request.setValue(project.replacingOccurrences(of: "\r", with: "").replacingOccurrences(of: "\n", with: ""), forHTTPHeaderField: "OpenAI-Project")
         }
 
         self.client = WebSocketClient(session: session, request: request)
@@ -160,20 +160,24 @@ public actor ResponsesWebSocket {
             throw OpenAIError.connectionError(message: "A response is already in-flight on this WebSocket connection")
         }
         isInFlight = true
-        try await sendEncodable(event)
+        do {
+            try await sendEncodable(event)
+        } catch {
+            isInFlight = false
+            throw error
+        }
 
         let decoder = self.decoder
         let client = self.client
 
         return AsyncThrowingStream { continuation in
             let receiveTask = Task {
-                defer { Task { self.setInFlight(false) } }
                 do {
                     while !Task.isCancelled {
                         let data = try await receiveRawData(client: client)
                         guard let data else {
                             continuation.finish()
-                            return
+                            break
                         }
 
                         // Check for error event first
@@ -185,7 +189,7 @@ public actor ResponsesWebSocket {
                                 type: errorEvent.error.type,
                                 code: errorEvent.error.code
                             ))
-                            return
+                            break
                         }
 
                         let streamEvent = try decoder.decode(ResponseStreamEvent.self, from: data)
@@ -196,13 +200,14 @@ public actor ResponsesWebSocket {
                            streamEvent.type == "response.failed" ||
                            streamEvent.type == "response.incomplete" {
                             continuation.finish()
-                            return
+                            break
                         }
                     }
                     continuation.finish()
                 } catch {
                     continuation.finish(throwing: error)
                 }
+                await self.setInFlight(false)
             }
 
             continuation.onTermination = { @Sendable termination in

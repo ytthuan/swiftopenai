@@ -78,4 +78,45 @@ extension MockAPITests {
         #expect(result.object == "file")
         #expect(result.deleted == true)
     }
+
+    @Test func createFile() async throws {
+        let json = """
+        {
+            "id": "file-new",
+            "object": "file",
+            "bytes": 2048,
+            "created_at": 1234567890,
+            "filename": "training.jsonl",
+            "purpose": "fine-tune",
+            "status": "uploaded"
+        }
+        """
+        let client = makeMockClient(json: json)
+        let file = try await client.files.create(
+            file: Data("test-data".utf8),
+            filename: "training.jsonl",
+            purpose: "fine-tune"
+        )
+
+        #expect(file.id == "file-new")
+        #expect(file.filename == "training.jsonl")
+        #expect(file.purpose == "fine-tune")
+
+        let requestURL = MockURLProtocol.lastRequest?.url?.path
+        #expect(requestURL?.contains("files") == true)
+
+        #expect(MockURLProtocol.lastRequestBody != nil)
+        #expect(MockURLProtocol.lastRequest?.value(forHTTPHeaderField: "Content-Type")?.contains("multipart/form-data") == true)
+    }
+
+    @Test func fileContent() async throws {
+        let client = makeMockClient(json: "file content here")
+        let data = try await client.files.content("file-abc123")
+
+        #expect(String(data: data, encoding: .utf8) == "file content here")
+
+        let requestURL = MockURLProtocol.lastRequest?.url?.path
+        #expect(requestURL?.contains("files") == true)
+        #expect(requestURL?.contains("content") == true)
+    }
 }

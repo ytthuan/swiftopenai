@@ -161,7 +161,127 @@ extension MockAPITests {
         let client = makeMockClient(json: "{\"object\": \"list\", \"data\": []}")
         _ = try await client.models.list()
         let request = MockURLProtocol.lastRequest
-        #expect(request?.value(forHTTPHeaderField: "User-Agent") == "SwiftOpenAI/0.4.0")
+        #expect(request?.value(forHTTPHeaderField: "User-Agent") == SDK.userAgent)
+    }
+
+    @Test func organizationHeaderStripsInjectedCRLF() async throws {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [MockURLProtocol.self]
+        let session = URLSession(configuration: config)
+
+        MockURLProtocol.mockResponse = (
+            "{\"object\": \"list\", \"data\": []}".data(using: .utf8)!,
+            HTTPURLResponse(url: URL(string: "https://api.openai.com/v1")!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+        )
+
+        let client = OpenAI(apiKey: "test-key", organization: "org-123\r\nEvil-Header: injected", session: session)
+        _ = try await client.models.list()
+        let request = MockURLProtocol.lastRequest
+        #expect(request?.value(forHTTPHeaderField: "OpenAI-Organization") == "org-123Evil-Header: injected")
+    }
+
+    @Test func projectHeaderStripsInjectedCRLF() async throws {
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [MockURLProtocol.self]
+        let session = URLSession(configuration: config)
+
+        MockURLProtocol.mockResponse = (
+            "{\"object\": \"list\", \"data\": []}".data(using: .utf8)!,
+            HTTPURLResponse(url: URL(string: "https://api.openai.com/v1")!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+        )
+
+        let client = OpenAI(apiKey: "test-key", project: "proj-456\r\nX-Bad: evil", session: session)
+        _ = try await client.models.list()
+        let request = MockURLProtocol.lastRequest
+        #expect(request?.value(forHTTPHeaderField: "OpenAI-Project") == "proj-456X-Bad: evil")
+    }
+
+    // MARK: - Retry Tests
+
+    @Test func retryOn429ThenSuccess() async throws {
+        let errorJson = """
+        {"error": {"message": "Rate limit exceeded", "type": "rate_limit_error", "param": null, "code": null}}
+        """
+        let successJson = """
+        {"object": "list", "data": []}
+        """
+
+        MockURLProtocol.reset()
+        MockURLProtocol.mockResponses = [
+            (errorJson.data(using: .utf8)!, HTTPURLResponse(url: URL(string: "https://api.openai.com/v1")!, statusCode: 429, httpVersion: nil, headerFields: nil)!),
+            (successJson.data(using: .utf8)!, HTTPURLResponse(url: URL(string: "https://api.openai.com/v1")!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+        ]
+
+        let client = makeMockClientWithRetry(maxRetries: 2)
+        _ = try await client.models.list()
+        #expect(MockURLProtocol.requestCount == 2)
+    }
+
+    @Test func retryOn500ThenSuccess() async throws {
+        let errorJson = """
+        {"error": {"message": "Internal server error", "type": "server_error", "param": null, "code": null}}
+        """
+        let successJson = """
+        {"object": "list", "data": []}
+        """
+
+        MockURLProtocol.reset()
+        MockURLProtocol.mockResponses = [
+            (errorJson.data(using: .utf8)!, HTTPURLResponse(url: URL(string: "https://api.openai.com/v1")!, statusCode: 500, httpVersion: nil, headerFields: nil)!),
+            (successJson.data(using: .utf8)!, HTTPURLResponse(url: URL(string: "https://api.openai.com/v1")!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+        ]
+
+        let client = makeMockClientWithRetry(maxRetries: 2)
+        _ = try await client.models.list()
+        #expect(MockURLProtocol.requestCount == 2)
+    }
+
+    @Test func noRetryWhenMaxRetriesIsZero() async throws {
+        let errorJson = """
+        {"error": {"message": "Rate limit exceeded", "type": "rate_limit_error", "param": null, "code": null}}
+        """
+
+        MockURLProtocol.reset()
+        MockURLProtocol.mockResponses = [
+            (errorJson.data(using: .utf8)!, HTTPURLResponse(url: URL(string: "https://api.openai.com/v1")!, statusCode: 429, httpVersion: nil, headerFields: nil)!)
+        ]
+
+        let client = makeMockClientWithRetry(maxRetries: 0)
+        do {
+            _ = try await client.models.list()
+            #expect(Bool(false), "Should have thrown")
+        } catch let error as OpenAIError {
+            if case .rateLimitError = error {
+                // Expected
+            } else {
+                #expect(Bool(false), "Wrong error type: \(error)")
+            }
+        }
+        #expect(MockURLProtocol.requestCount == 1)
+    }
+
+    @Test func noRetryOn401() async throws {
+        let errorJson = """
+        {"error": {"message": "Invalid API key", "type": "invalid_request_error", "param": null, "code": "invalid_api_key"}}
+        """
+
+        MockURLProtocol.reset()
+        MockURLProtocol.mockResponses = [
+            (errorJson.data(using: .utf8)!, HTTPURLResponse(url: URL(string: "https://api.openai.com/v1")!, statusCode: 401, httpVersion: nil, headerFields: nil)!)
+        ]
+
+        let client = makeMockClientWithRetry(maxRetries: 2)
+        do {
+            _ = try await client.models.list()
+            #expect(Bool(false), "Should have thrown")
+        } catch let error as OpenAIError {
+            if case .authenticationError = error {
+                // Expected
+            } else {
+                #expect(Bool(false), "Wrong error type: \(error)")
+            }
+        }
+        #expect(MockURLProtocol.requestCount == 1)
     }
 
 }

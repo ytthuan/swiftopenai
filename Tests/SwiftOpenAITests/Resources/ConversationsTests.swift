@@ -222,6 +222,27 @@ extension MockAPITests {
         #expect(requestURL?.contains("conversations/conv_123/items/msg_123") == true)
     }
 
+    @Test func conversationItemCallIdDecodesCorrectly() async throws {
+        let json = """
+        {
+            "id": "fc_001",
+            "type": "function_call",
+            "name": "get_weather",
+            "arguments": "{\\"city\\":\\"Paris\\"}",
+            "call_id": "call_abc123",
+            "status": "completed"
+        }
+        """
+        let client = makeMockClient(json: json)
+        let item = try await client.conversations.items.retrieve("fc_001", conversationId: "conv_123")
+
+        #expect(item.id == "fc_001")
+        #expect(item.type == "function_call")
+        #expect(item.name == "get_weather")
+        #expect(item.callId == "call_abc123")
+        #expect(item.arguments == "{\"city\":\"Paris\"}")
+    }
+
     @Test func createConversationWithInitialItems() async throws {
         let json = """
         {

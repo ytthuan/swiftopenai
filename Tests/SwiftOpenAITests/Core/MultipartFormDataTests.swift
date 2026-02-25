@@ -71,4 +71,15 @@ import Foundation
         let form = MultipartFormData(boundary: "test-boundary")
         #expect(form.contentType == "multipart/form-data; boundary=test-boundary")
     }
+
+    @Test func sanitizesMimeTypeWithCRLF() {
+        var form = MultipartFormData(boundary: "test-boundary")
+        let fileData = Data("data".utf8)
+        form.addFile(name: "file", filename: "test.txt", mimeType: "text/plain\r\nX-Evil: injected", data: fileData)
+        let data = form.encode()
+        let body = String(data: data, encoding: .utf8)!
+
+        #expect(body.contains("Content-Type: text/plainX-Evil: injected"))
+        #expect(!body.contains("Content-Type: text/plain\r\nX-Evil"))
+    }
 }
