@@ -31,34 +31,36 @@ public struct ServerSentEventsStream<T: Decodable & Sendable>: AsyncSequence, Se
     }
 
     public func makeAsyncIterator() -> AsyncIterator {
-        AsyncIterator(iterator: bytes.makeAsyncIterator(), decoder: decoder)
+        AsyncIterator(lineIterator: bytes.lines.makeAsyncIterator(), decoder: decoder)
     }
     #endif
 
     public struct AsyncIterator: AsyncIteratorProtocol {
         #if canImport(FoundationNetworking)
         private var iterator: AsyncThrowingStream<UInt8, Error>.AsyncIterator
-        #else
-        private var iterator: URLSession.AsyncBytes.AsyncIterator
-        #endif
         private let decoder: JSONDecoder
         private var buffer = Data(capacity: 4096)  // typical SSE line < 4KB
         /// Maximum SSE buffer size (10 MB) to prevent unbounded memory growth.
         private let maxBufferSize = 10 * 1024 * 1024
 
-        #if canImport(FoundationNetworking)
         init(iterator: AsyncThrowingStream<UInt8, Error>.AsyncIterator, decoder: JSONDecoder) {
             self.iterator = iterator
             self.decoder = decoder
         }
         #else
-        init(iterator: URLSession.AsyncBytes.AsyncIterator, decoder: JSONDecoder) {
-            self.iterator = iterator
+        private var lineIterator: AsyncLineSequence<URLSession.AsyncBytes>.AsyncIterator
+        private let decoder: JSONDecoder
+        /// Maximum single SSE line size (10 MB) to prevent unbounded memory from malformed data.
+        private let maxLineSize = 10 * 1024 * 1024
+
+        init(lineIterator: AsyncLineSequence<URLSession.AsyncBytes>.AsyncIterator, decoder: JSONDecoder) {
+            self.lineIterator = lineIterator
             self.decoder = decoder
         }
         #endif
 
         public mutating func next() async throws -> T? {
+            #if canImport(FoundationNetworking)
             let LF: UInt8 = 0x0A       // \n
             let CR: UInt8 = 0x0D       // \r
             let SP: UInt8 = 0x20       // ' '
@@ -132,6 +134,41 @@ public struct ServerSentEventsStream<T: Decodable & Sendable>: AsyncSequence, Se
                 }
             }
             return nil
+            #else
+            // Apple platforms: use AsyncLineSequence for one suspension per line
+            while let line = try await lineIterator.next() {
+                // Guard against single malformed mega-lines
+                if line.utf8.count > maxLineSize {
+                    throw OpenAIError.bufferOverflow(
+                        message: "SSE line exceeded \(maxLineSize) bytes"
+                    )
+                }
+
+                // Skip empty lines
+                let trimmed = line.drop(while: { $0 == " " || $0 == "\t" })
+                if trimmed.isEmpty { continue }
+
+                // Skip comment lines
+                if trimmed.hasPrefix(":") { continue }
+
+                // Check for "data:" prefix
+                guard trimmed.hasPrefix("data:") else { continue }
+
+                // Extract payload after "data:"
+                var payload = trimmed.dropFirst(5)
+                if payload.first == " " { payload = payload.dropFirst() }
+
+                if payload.isEmpty { continue }
+
+                // Check for [DONE]
+                if payload == "[DONE]" { return nil }
+
+                // Decode from payload
+                guard let data = String(payload).data(using: .utf8) else { continue }
+                return try decoder.decode(T.self, from: data)
+            }
+            return nil
+            #endif
         }
     }
 }

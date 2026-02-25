@@ -39,6 +39,7 @@ struct MultipartFormData: Sendable {
     }
 
     /// Encodes all parts into the final `Data` body.
+    /// Uses `ContiguousArray<UInt8>` internally to avoid intermediate `Data` allocations.
     func encode() -> Data {
         let boundaryBytes = "--\(boundary)".utf8.count
         let overhead = parts.count * (boundaryBytes + 200) + boundaryBytes + 10
@@ -48,34 +49,46 @@ struct MultipartFormData: Sendable {
             case .file(_, _, _, let data): return total + data.count
             }
         }
-        var body = Data()
-        body.reserveCapacity(overhead + dataSize)
-        let crlf = "\r\n"
+
+        var builder = ContiguousArray<UInt8>()
+        builder.reserveCapacity(overhead + dataSize)
+
+        let crlfBytes: [UInt8] = [0x0D, 0x0A]
+        let boundaryLine = "--\(boundary)"
+        let closingLine = "--\(boundary)--"
 
         for part in parts {
-            body.append("--\(boundary)\(crlf)")
+            builder.append(contentsOf: boundaryLine.utf8)
+            builder.append(contentsOf: crlfBytes)
 
             switch part {
             case .field(let name, let value):
                 let safeName = Self.sanitizeHeaderValue(name)
-                body.append("Content-Disposition: form-data; name=\"\(safeName)\"\(crlf)")
-                body.append(crlf)
-                body.append(value)
-                body.append(crlf)
+                let header = "Content-Disposition: form-data; name=\"\(safeName)\""
+                builder.append(contentsOf: header.utf8)
+                builder.append(contentsOf: crlfBytes)
+                builder.append(contentsOf: crlfBytes)
+                builder.append(contentsOf: value.utf8)
+                builder.append(contentsOf: crlfBytes)
 
             case .file(let name, let filename, let mimeType, let data):
                 let safeName = Self.sanitizeHeaderValue(name)
                 let safeFilename = Self.sanitizeHeaderValue(filename)
-                body.append("Content-Disposition: form-data; name=\"\(safeName)\"; filename=\"\(safeFilename)\"\(crlf)")
-                body.append("Content-Type: \(Self.sanitizeHeaderValue(mimeType))\(crlf)")
-                body.append(crlf)
-                body.append(data)
-                body.append(crlf)
+                let header = "Content-Disposition: form-data; name=\"\(safeName)\"; filename=\"\(safeFilename)\""
+                let contentType = "Content-Type: \(Self.sanitizeHeaderValue(mimeType))"
+                builder.append(contentsOf: header.utf8)
+                builder.append(contentsOf: crlfBytes)
+                builder.append(contentsOf: contentType.utf8)
+                builder.append(contentsOf: crlfBytes)
+                builder.append(contentsOf: crlfBytes)
+                builder.append(contentsOf: data)
+                builder.append(contentsOf: crlfBytes)
             }
         }
 
-        body.append("--\(boundary)--\(crlf)")
-        return body
+        builder.append(contentsOf: closingLine.utf8)
+        builder.append(contentsOf: crlfBytes)
+        return Data(builder)
     }
 
     // MARK: - Internal
@@ -86,12 +99,3 @@ struct MultipartFormData: Sendable {
     }
 }
 
-// MARK: - Data + String Append
-
-private extension Data {
-    mutating func append(_ string: String) {
-        if let data = string.data(using: .utf8) {
-            append(data)
-        }
-    }
-}

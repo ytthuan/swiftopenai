@@ -129,4 +129,25 @@ public final class OpenAI: Sendable {
     public func shutdown() {
         httpClient.session.invalidateAndCancel()
     }
+
+    /// Pre-warms the HTTP connection by performing a lightweight API call.
+    ///
+    /// Call this method before making your first real request to eliminate
+    /// TCP/TLS handshake latency from the critical path. The method fetches
+    /// a minimal list of models (limit=1) to establish the connection.
+    ///
+    /// - Note: This makes a billable API call, but the overhead is negligible.
+    ///
+    /// Usage:
+    /// ```swift
+    /// let client = OpenAI(apiKey: "sk-...")
+    /// try await client.warmConnection()
+    /// // Subsequent requests benefit from the warm connection
+    /// ```
+    public func warmConnection() async throws {
+        let _: ListResponse<Model> = try await httpClient.get(
+            path: "models",
+            queryItems: [URLQueryItem(name: "limit", value: "1")]
+        )
+    }
 }

@@ -210,6 +210,10 @@ public struct ResponseOutputItem: Codable, Sendable {
 
     /// The reasoning summary text.
     public let summary: [ResponseReasoningSummary]?
+
+    private enum CodingKeys: String, CodingKey {
+        case type, id, role, status, content, callId, name, arguments, code, summary
+    }
 }
 
 /// A content part in a response output item.
@@ -263,6 +267,14 @@ public struct ResponseUsage: Codable, Sendable {
     public struct OutputTokensDetails: Codable, Sendable {
         /// The number of reasoning tokens used.
         public let reasoningTokens: Int?
+
+        private enum CodingKeys: String, CodingKey {
+            case reasoningTokens
+        }
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case inputTokens, outputTokens, totalTokens, outputTokensDetails
     }
 }
 
@@ -779,4 +791,9 @@ public struct ResponseStreamEvent: Codable, Sendable {
     public let callId: String?
     /// The sequence number for ordering events.
     public let sequenceNumber: Int?
+
+    private enum CodingKeys: String, CodingKey {
+        case type, response, item, part, delta, outputIndex, contentIndex
+        case itemId, text, arguments, name, callId, sequenceNumber
+    }
 }

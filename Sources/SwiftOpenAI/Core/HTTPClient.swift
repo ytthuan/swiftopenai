@@ -10,6 +10,9 @@ struct HTTPClient: Sendable {
 
     let session: URLSession
     let configuration: Configuration
+    private let baseComponents: URLComponents
+    private let basePath: String
+    private let commonHeaders: [(field: String, value: String)]
 
     init(configuration: Configuration, session: URLSession? = nil) {
         self.configuration = configuration
@@ -22,7 +25,7 @@ struct HTTPClient: Sendable {
             sessionConfig.requestCachePolicy = .reloadIgnoringLocalCacheData
             sessionConfig.httpMaximumConnectionsPerHost = 8
             #if canImport(Darwin)
-            sessionConfig.timeoutIntervalForResource = configuration.timeoutInterval * 2
+            sessionConfig.timeoutIntervalForResource = min(configuration.timeoutInterval * 2, 1200)
             sessionConfig.waitsForConnectivity = true
             sessionConfig.urlCache = nil
             sessionConfig.httpShouldUsePipelining = true
@@ -34,6 +37,29 @@ struct HTTPClient: Sendable {
             #endif
             self.session = URLSession(configuration: sessionConfig)
         }
+
+        // Cache base URL components to avoid re-parsing per request
+        var components = URLComponents(url: configuration.baseURL, resolvingAgainstBaseURL: true) ?? URLComponents()
+        let path = components.path
+        self.basePath = path.hasSuffix("/") ? path : path + "/"
+        components.path = ""
+        components.queryItems = nil
+        self.baseComponents = components
+
+        // Pre-build common headers (computed once, applied per-request)
+        var headers: [(field: String, value: String)] = [
+            ("Authorization", "Bearer \(configuration.apiKey)"),
+            ("Accept-Encoding", "gzip, deflate"),
+            ("Connection", "keep-alive"),
+            ("User-Agent", SDK.userAgent),
+        ]
+        if let org = configuration.organization {
+            headers.append(("OpenAI-Organization", Self.sanitizeHeaderValue(org)))
+        }
+        if let project = configuration.project {
+            headers.append(("OpenAI-Project", Self.sanitizeHeaderValue(project)))
+        }
+        self.commonHeaders = headers
     }
 
     // MARK: - JSON Coding
@@ -59,32 +85,25 @@ struct HTTPClient: Sendable {
         body: (any Encodable & Sendable)? = nil,
         queryItems: [URLQueryItem]? = nil
     ) throws -> URLRequest {
-        let baseString = configuration.baseURL.absoluteString
-        let separator = baseString.hasSuffix("/") ? "" : "/"
-        var urlComponents = URLComponents(string: baseString + separator + path)
+        var components = baseComponents
+        components.path = basePath + path
         if let queryItems, !queryItems.isEmpty {
-            urlComponents?.queryItems = queryItems
+            components.queryItems = queryItems
         }
 
-        guard let url = urlComponents?.url else {
+        guard let url = components.url else {
             throw URLError(.badURL)
         }
 
         var request = URLRequest(url: url)
         request.httpMethod = method
-        request.setValue("Bearer \(configuration.apiKey)", forHTTPHeaderField: "Authorization")
+
+        for header in commonHeaders {
+            request.setValue(header.value, forHTTPHeaderField: header.field)
+        }
+
         if body != nil {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        }
-        request.setValue("gzip, deflate", forHTTPHeaderField: "Accept-Encoding")
-        request.setValue("keep-alive", forHTTPHeaderField: "Connection")
-        request.setValue(SDK.userAgent, forHTTPHeaderField: "User-Agent")
-
-        if let org = configuration.organization {
-            request.setValue(Self.sanitizeHeaderValue(org), forHTTPHeaderField: "OpenAI-Organization")
-        }
-        if let project = configuration.project {
-            request.setValue(Self.sanitizeHeaderValue(project), forHTTPHeaderField: "OpenAI-Project")
         }
 
         if let body {
@@ -100,27 +119,21 @@ struct HTTPClient: Sendable {
         method: String = "POST",
         formData: MultipartFormData
     ) throws -> URLRequest {
-        let baseString = configuration.baseURL.absoluteString
-        let separator = baseString.hasSuffix("/") ? "" : "/"
-        guard let url = URL(string: baseString + separator + path) else {
+        var components = baseComponents
+        components.path = basePath + path
+
+        guard let url = components.url else {
             throw URLError(.badURL)
         }
 
         var request = URLRequest(url: url)
         request.httpMethod = method
-        request.setValue("Bearer \(configuration.apiKey)", forHTTPHeaderField: "Authorization")
+
+        for header in commonHeaders {
+            request.setValue(header.value, forHTTPHeaderField: header.field)
+        }
+
         request.setValue(formData.contentType, forHTTPHeaderField: "Content-Type")
-        request.setValue("gzip, deflate", forHTTPHeaderField: "Accept-Encoding")
-        request.setValue("keep-alive", forHTTPHeaderField: "Connection")
-        request.setValue(SDK.userAgent, forHTTPHeaderField: "User-Agent")
-
-        if let org = configuration.organization {
-            request.setValue(Self.sanitizeHeaderValue(org), forHTTPHeaderField: "OpenAI-Organization")
-        }
-        if let project = configuration.project {
-            request.setValue(Self.sanitizeHeaderValue(project), forHTTPHeaderField: "OpenAI-Project")
-        }
-
         request.httpBody = formData.encode()
         return request
     }
@@ -175,7 +188,7 @@ struct HTTPClient: Sendable {
             let isLastAttempt = attempt == maxRetries
 
             if isRetryable && !isLastAttempt {
-                let delay = min(max(retryDelay(for: attempt, response: httpResponse), 0), 300)
+                let delay = retryDelay(for: attempt, response: httpResponse)
                 try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
                 continue
             }
@@ -188,15 +201,15 @@ struct HTTPClient: Sendable {
 
     /// Calculates the retry delay for a given attempt, respecting Retry-After header.
     private func retryDelay(for attempt: Int, response: HTTPURLResponse) -> TimeInterval {
-        // Respect Retry-After header if present
+        // Respect Retry-After header if present (capped at 120s to prevent indefinite waits)
         if let retryAfterString = response.value(forHTTPHeaderField: "Retry-After"),
            let retryAfter = TimeInterval(retryAfterString) {
-            return retryAfter
+            return min(max(retryAfter, 0), 120)
         }
-        // Exponential backoff with jitter
+        // Exponential backoff with jitter (capped at 8s matching Python SDK MAX_RETRY_DELAY)
         let baseDelay = configuration.retryDelay * pow(2.0, Double(attempt))
         let jitter = Double.random(in: 0...0.25)
-        return baseDelay + jitter
+        return min(baseDelay + jitter, 8)
     }
 
     /// Performs a streaming request and returns an SSE `AsyncSequence`.

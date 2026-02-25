@@ -5,7 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] — v0.5.0
+## [Unreleased] — v0.6.0
+
+### Added
+- Connection pre-warming via `OpenAI.warmConnection()` — eliminates TCP/TLS handshake latency on first request
+- WebSocket keepalive pings in `WebSocketClient` — prevents idle connection drops in Realtime/ResponsesWebSocket sessions
+- Explicit connect timeout cap (`timeoutIntervalForResource` capped at 1200s)
+
+### Changed
+- **SSE parsing**: Replaced byte-by-byte iteration with line-based processing (`AsyncLineSequence`) on Apple platforms — reduces async suspension overhead by 100-300x per SSE event
+- **URL construction**: Cached `URLComponents` and pre-built common headers in `HTTPClient.init` — eliminates per-request URL re-parsing
+- **MultipartFormData**: Uses `ContiguousArray<UInt8>` builder instead of intermediate `Data` allocations — 30-50% fewer allocations during form encoding
+- **JSON decode**: Added explicit `CodingKeys` to SSE hot-path types (`ResponseStreamEvent`, `ChatCompletionChunk`, `ChatCompletion`, etc.) — eliminates runtime `convertFromSnakeCase` key transformation
+- **Retry delay**: Backoff capped at 8s (matching Python SDK `MAX_RETRY_DELAY`); `Retry-After` header respected up to 120s
+
+### Fixed
+- SSE buffer overflow check now guards per-line size (not cumulative stream length) — prevents false truncation on large streaming responses (64K+ tokens)
+
+## [0.5.0] — 2026-02-25
 
 ### Added
 - Retry with exponential backoff for 429/5xx responses (configurable `maxRetries`, `retryDelay`)
