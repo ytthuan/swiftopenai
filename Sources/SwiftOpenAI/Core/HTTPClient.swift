@@ -19,15 +19,17 @@ struct HTTPClient: Sendable {
         } else {
             let sessionConfig = URLSessionConfiguration.default
             sessionConfig.timeoutIntervalForRequest = configuration.timeoutInterval
-            sessionConfig.timeoutIntervalForResource = configuration.timeoutInterval * 2
-            sessionConfig.httpMaximumConnectionsPerHost = 8
-            sessionConfig.waitsForConnectivity = true
             sessionConfig.requestCachePolicy = .reloadIgnoringLocalCacheData
+            sessionConfig.httpMaximumConnectionsPerHost = 8
+            #if canImport(Darwin)
+            sessionConfig.timeoutIntervalForResource = configuration.timeoutInterval * 2
+            sessionConfig.waitsForConnectivity = true
             sessionConfig.urlCache = nil
             sessionConfig.httpShouldUsePipelining = true
             sessionConfig.httpShouldSetCookies = false
             sessionConfig.httpCookieAcceptPolicy = .never
             sessionConfig.tlsMinimumSupportedProtocolVersion = .TLSv12
+            #endif
             self.session = URLSession(configuration: sessionConfig)
         }
     }
