@@ -19,6 +19,15 @@ struct HTTPClient: Sendable {
         } else {
             let sessionConfig = URLSessionConfiguration.default
             sessionConfig.timeoutIntervalForRequest = configuration.timeoutInterval
+            sessionConfig.timeoutIntervalForResource = configuration.timeoutInterval * 2
+            sessionConfig.httpMaximumConnectionsPerHost = 8
+            sessionConfig.waitsForConnectivity = true
+            sessionConfig.requestCachePolicy = .reloadIgnoringLocalCacheData
+            sessionConfig.urlCache = nil
+            sessionConfig.httpShouldUsePipelining = true
+            sessionConfig.httpShouldSetCookies = false
+            sessionConfig.httpCookieAcceptPolicy = .never
+            sessionConfig.tlsMinimumSupportedProtocolVersion = .TLSv12
             self.session = URLSession(configuration: sessionConfig)
         }
     }
@@ -46,10 +55,9 @@ struct HTTPClient: Sendable {
         body: (any Encodable & Sendable)? = nil,
         queryItems: [URLQueryItem]? = nil
     ) throws -> URLRequest {
-        var urlComponents = URLComponents(
-            url: configuration.baseURL.appendingPathComponent(path),
-            resolvingAgainstBaseURL: true
-        )
+        let baseString = configuration.baseURL.absoluteString
+        let separator = baseString.hasSuffix("/") ? "" : "/"
+        var urlComponents = URLComponents(string: baseString + separator + path)
         if let queryItems, !queryItems.isEmpty {
             urlComponents?.queryItems = queryItems
         }
@@ -62,7 +70,9 @@ struct HTTPClient: Sendable {
         request.httpMethod = method
         request.setValue("Bearer \(configuration.apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("SwiftOpenAI/0.1.0", forHTTPHeaderField: "User-Agent")
+        request.setValue("gzip, deflate", forHTTPHeaderField: "Accept-Encoding")
+        request.setValue("keep-alive", forHTTPHeaderField: "Connection")
+        request.setValue("SwiftOpenAI/0.3.1", forHTTPHeaderField: "User-Agent")
 
         if let org = configuration.organization {
             request.setValue(org, forHTTPHeaderField: "OpenAI-Organization")
@@ -84,13 +94,19 @@ struct HTTPClient: Sendable {
         method: String = "POST",
         formData: MultipartFormData
     ) throws -> URLRequest {
-        let url = configuration.baseURL.appendingPathComponent(path)
+        let baseString = configuration.baseURL.absoluteString
+        let separator = baseString.hasSuffix("/") ? "" : "/"
+        guard let url = URL(string: baseString + separator + path) else {
+            throw URLError(.badURL)
+        }
 
         var request = URLRequest(url: url)
         request.httpMethod = method
         request.setValue("Bearer \(configuration.apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue(formData.contentType, forHTTPHeaderField: "Content-Type")
-        request.setValue("SwiftOpenAI/0.1.0", forHTTPHeaderField: "User-Agent")
+        request.setValue("gzip, deflate", forHTTPHeaderField: "Accept-Encoding")
+        request.setValue("keep-alive", forHTTPHeaderField: "Connection")
+        request.setValue("SwiftOpenAI/0.3.1", forHTTPHeaderField: "User-Agent")
 
         if let org = configuration.organization {
             request.setValue(org, forHTTPHeaderField: "OpenAI-Organization")
@@ -166,6 +182,7 @@ struct HTTPClient: Sendable {
 
         guard (200..<300).contains(httpResponse.statusCode) else {
             var errorData = Data()
+            errorData.reserveCapacity(1024)
             for try await byte in bytes {
                 errorData.append(byte)
             }
