@@ -74,7 +74,7 @@ struct HTTPClient: Sendable {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("gzip, deflate", forHTTPHeaderField: "Accept-Encoding")
         request.setValue("keep-alive", forHTTPHeaderField: "Connection")
-        request.setValue("SwiftOpenAI/0.3.1", forHTTPHeaderField: "User-Agent")
+        request.setValue("SwiftOpenAI/0.4.0", forHTTPHeaderField: "User-Agent")
 
         if let org = configuration.organization {
             request.setValue(org, forHTTPHeaderField: "OpenAI-Organization")
@@ -108,7 +108,7 @@ struct HTTPClient: Sendable {
         request.setValue(formData.contentType, forHTTPHeaderField: "Content-Type")
         request.setValue("gzip, deflate", forHTTPHeaderField: "Accept-Encoding")
         request.setValue("keep-alive", forHTTPHeaderField: "Connection")
-        request.setValue("SwiftOpenAI/0.3.1", forHTTPHeaderField: "User-Agent")
+        request.setValue("SwiftOpenAI/0.4.0", forHTTPHeaderField: "User-Agent")
 
         if let org = configuration.organization {
             request.setValue(org, forHTTPHeaderField: "OpenAI-Organization")
