@@ -74,7 +74,7 @@ struct CompletionCreateParams: Encodable, Sendable {
     let temperature: Double?
     let topP: Double?
     let n: Int?
-    let stream: Bool? = nil
+    var stream: Bool? = nil
     let logprobs: Int?
     let stop: CompletionStop?
     let presencePenalty: Double?

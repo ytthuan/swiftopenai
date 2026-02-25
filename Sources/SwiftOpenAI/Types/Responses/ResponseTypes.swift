@@ -77,16 +77,22 @@ public struct ResponseDeleted: Codable, Sendable {
     public let deleted: Bool
 }
 
-/// Truncation strategy for response creation.
+/// Strategy for truncating input when context exceeds the model's limit.
 public enum TruncationStrategy: String, Codable, Sendable {
+    /// Automatically truncate from the beginning of the conversation.
     case auto
+    /// Disable truncation (request will fail if too long).
     case disabled
 }
 
-/// Service tier for response creation.
+/// The service tier for processing the request.
 public enum ServiceTier: String, Codable, Sendable {
+    /// Default tier.
     case auto
+    /// Default tier (alias for backward compatibility).
     case `default`
+    /// Lower-latency tier.
+    case flex
 }
 
 // MARK: - Output Items
