@@ -161,7 +161,7 @@ extension MockAPITests {
         let client = makeMockClient(json: "{\"object\": \"list\", \"data\": []}")
         _ = try await client.models.list()
         let request = MockURLProtocol.lastRequest
-        #expect(request?.value(forHTTPHeaderField: "User-Agent") == "SwiftOpenAI/0.1.0")
+        #expect(request?.value(forHTTPHeaderField: "User-Agent") == "SwiftOpenAI/0.3.1")
     }
 
 }

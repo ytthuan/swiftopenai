@@ -25,11 +25,23 @@ public struct Configuration: Sendable {
         baseURL: URL = URL(string: "https://api.openai.com/v1")!,
         timeoutInterval: TimeInterval = 600
     ) {
+        precondition(!apiKey.isEmpty, "SwiftOpenAI: API key must not be empty")
+        Self.validateSecureURL(baseURL)
         self.apiKey = apiKey
         self.organization = organization
         self.project = project
         self.baseURL = baseURL
         self.timeoutInterval = timeoutInterval
+    }
+
+    /// Validates that the base URL uses a secure scheme.
+    /// Logs a warning for non-HTTPS URLs in debug builds.
+    static func validateSecureURL(_ baseURL: URL) {
+        #if DEBUG
+        if let scheme = baseURL.scheme?.lowercased(), scheme != "https", scheme != "wss" {
+            print("⚠️ SwiftOpenAI: Base URL uses insecure scheme '\(scheme)'. Use HTTPS in production.")
+        }
+        #endif
     }
 
 #if canImport(Darwin)
