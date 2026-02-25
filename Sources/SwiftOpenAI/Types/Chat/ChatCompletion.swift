@@ -11,6 +11,10 @@ public struct ChatCompletion: Codable, Sendable {
     public let systemFingerprint: String?
     public let serviceTier: String?
 
+    private enum CodingKeys: String, CodingKey {
+        case id, object, created, model, choices, usage, systemFingerprint, serviceTier
+    }
+
     /// Creates a `ChatCompletion` instance (useful for testing).
     public init(
         id: String,
@@ -40,6 +44,10 @@ public struct ChatCompletionChoice: Codable, Sendable {
     public let finishReason: String?
     public let logprobs: ChatCompletionLogprobs?
 
+    private enum CodingKeys: String, CodingKey {
+        case index, message, finishReason, logprobs
+    }
+
     public init(index: Int, message: ChatCompletionResponseMessage, finishReason: String? = nil, logprobs: ChatCompletionLogprobs? = nil) {
         self.index = index
         self.message = message
@@ -54,6 +62,10 @@ public struct ChatCompletionResponseMessage: Codable, Sendable {
     public let content: String?
     public let toolCalls: [ChatCompletionToolCall]?
     public let refusal: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case role, content, toolCalls, refusal
+    }
 
     public init(role: String = "assistant", content: String?, toolCalls: [ChatCompletionToolCall]? = nil, refusal: String? = nil) {
         self.role = role
