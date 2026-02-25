@@ -57,8 +57,8 @@ public struct ServerSentEventsStream<T: Decodable & Sendable>: AsyncSequence, Se
         #endif
 
         public mutating func next() async throws -> T? {
-            // ASCII constants for byte-level parsing
             let LF: UInt8 = 0x0A       // \n
+            let CR: UInt8 = 0x0D       // \r
             let SP: UInt8 = 0x20       // ' '
             let HT: UInt8 = 0x09       // \t
             let COLON: UInt8 = 0x3A    // :
@@ -66,6 +66,11 @@ public struct ServerSentEventsStream<T: Decodable & Sendable>: AsyncSequence, Se
             while let byte = try await iterator.next() {
                 if byte == LF {
                     defer { buffer.removeAll(keepingCapacity: true) }
+
+                    // Trim trailing CR (CRLF endings)
+                    if !buffer.isEmpty && buffer[buffer.index(before: buffer.endIndex)] == CR {
+                        buffer.removeLast()
+                    }
 
                     // Skip empty lines
                     if buffer.isEmpty { continue }
@@ -81,20 +86,28 @@ public struct ServerSentEventsStream<T: Decodable & Sendable>: AsyncSequence, Se
                     let count = end - start
                     if count == 0 || buffer[start] == COLON { continue }
 
-                    // Check for "data: " prefix (6 bytes: d=0x64 a=0x61 t=0x74 a=0x61 :=0x3A ' '=0x20)
-                    guard count > 6,
+                    // Check for "data:" prefix (5 bytes: d=0x64 a=0x61 t=0x74 a=0x61 :=0x3A)
+                    guard count >= 5,
                           buffer[start] == 0x64,
                           buffer[start + 1] == 0x61,
                           buffer[start + 2] == 0x74,
                           buffer[start + 3] == 0x61,
-                          buffer[start + 4] == 0x3A,
-                          buffer[start + 5] == 0x20
+                          buffer[start + 4] == 0x3A
                     else { continue }
 
-                    let payloadStart = start + 6
-                    let payloadLen = end - payloadStart
+                    // Skip optional space after colon
+                    var payloadStart = start + 5
+                    if payloadStart < end && buffer[payloadStart] == SP {
+                        payloadStart += 1
+                    }
+
+                    // Empty payload
+                    if payloadStart >= end { continue }
+
+                    let payloadEnd = end
 
                     // Check for "[DONE]" (6 bytes: [=0x5B D=0x44 O=0x4F N=0x4E E=0x45 ]=0x5D)
+                    let payloadLen = payloadEnd - payloadStart
                     if payloadLen == 6,
                        buffer[payloadStart] == 0x5B,
                        buffer[payloadStart + 1] == 0x44,
@@ -105,8 +118,8 @@ public struct ServerSentEventsStream<T: Decodable & Sendable>: AsyncSequence, Se
                         return nil
                     }
 
-                    // Decode directly from buffer slice — no String round-trip
-                    return try decoder.decode(T.self, from: buffer[payloadStart..<end])
+                    // Decode directly from buffer slice
+                    return try decoder.decode(T.self, from: buffer[payloadStart..<payloadEnd])
                 } else {
                     buffer.append(byte)
                 }

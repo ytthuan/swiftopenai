@@ -40,7 +40,10 @@ public enum HyperparameterValue: Codable, Sendable {
         } else if let doubleVal = try? container.decode(Double.self) {
             self = .double(doubleVal)
         } else {
-            self = .auto
+            throw DecodingError.dataCorrupted(.init(
+                codingPath: decoder.codingPath,
+                debugDescription: "Expected \"auto\", Int, or Double for HyperparameterValue"
+            ))
         }
     }
 

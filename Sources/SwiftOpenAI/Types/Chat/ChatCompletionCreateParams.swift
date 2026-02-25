@@ -123,11 +123,44 @@ public enum ChatCompletionResponseFormat: Encodable, Sendable {
 }
 
 /// Type-erased Codable value for JSON schema parameters.
-public struct AnyCodable: Encodable, Sendable {
+public struct AnyCodable: Codable, Sendable {
     private let _encode: @Sendable (Encoder) throws -> Void
 
     public init<T: Encodable & Sendable>(_ value: T) {
         self._encode = { encoder in try value.encode(to: encoder) }
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if container.decodeNil() {
+            self.init(Optional<String>.none as String?)
+            return
+        }
+        if let bool = try? container.decode(Bool.self) {
+            self.init(bool)
+            return
+        }
+        if let int = try? container.decode(Int.self) {
+            self.init(int)
+            return
+        }
+        if let double = try? container.decode(Double.self) {
+            self.init(double)
+            return
+        }
+        if let string = try? container.decode(String.self) {
+            self.init(string)
+            return
+        }
+        if let array = try? container.decode([AnyCodable].self) {
+            self.init(array)
+            return
+        }
+        if let object = try? container.decode([String: AnyCodable].self) {
+            self.init(object)
+            return
+        }
+        throw DecodingError.dataCorruptedError(in: container, debugDescription: "Unsupported JSON value")
     }
 
     public func encode(to encoder: Encoder) throws {

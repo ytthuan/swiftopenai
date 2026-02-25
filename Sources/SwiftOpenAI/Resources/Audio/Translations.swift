@@ -30,6 +30,14 @@ public struct Translations: Sendable {
         if let prompt { formData.addField(name: "prompt", value: prompt) }
         if let responseFormat { formData.addField(name: "response_format", value: responseFormat) }
         if let temperature { formData.addField(name: "temperature", value: String(temperature)) }
+        
+        let textFormats = ["text", "srt", "vtt"]
+        if let responseFormat, textFormats.contains(responseFormat) {
+            let rawData = try await client.postMultipartRaw(path: "audio/translations", formData: formData)
+            let text = String(data: rawData, encoding: .utf8) ?? ""
+            return Translation(text: text)
+        }
+        
         return try await client.postMultipart(path: "audio/translations", formData: formData)
     }
 }

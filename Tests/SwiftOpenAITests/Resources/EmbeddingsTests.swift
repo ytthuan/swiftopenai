@@ -38,7 +38,11 @@ extension MockAPITests {
     #expect(response.data.count == 1)
     #expect(response.data[0].object == "embedding")
     #expect(response.data[0].index == 0)
-    #expect(response.data[0].embedding.count == 3)
+    if case .floats(let values) = response.data[0].embedding {
+        #expect(values.count == 3)
+    } else {
+        #expect(Bool(false), "Expected floats embedding")
+    }
     #expect(response.usage.promptTokens == 5)
     #expect(response.usage.totalTokens == 5)
 
@@ -71,7 +75,11 @@ extension MockAPITests {
         dimensions: 256
     )
 
-    #expect(response.data[0].embedding.count == 2)
+    if case .floats(let values) = response.data[0].embedding {
+        #expect(values.count == 2)
+    } else {
+        #expect(Bool(false), "Expected floats embedding")
+    }
     #expect(response.usage.promptTokens == 2)
 
     // Verify the request body includes dimensions

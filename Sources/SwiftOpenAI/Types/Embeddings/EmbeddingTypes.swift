@@ -56,12 +56,40 @@ public struct CreateEmbeddingResponse: Codable, Sendable {
     public let usage: EmbeddingUsage
 }
 
+/// Represents an embedding value that can be either a float array or base64 string.
+public enum EmbeddingValue: Codable, Sendable {
+    case floats([Double])
+    case base64(String)
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if let arr = try? container.decode([Double].self) {
+            self = .floats(arr)
+        } else if let str = try? container.decode(String.self) {
+            self = .base64(str)
+        } else {
+            throw DecodingError.dataCorrupted(.init(
+                codingPath: decoder.codingPath,
+                debugDescription: "Expected [Double] or String for embedding"
+            ))
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case .floats(let arr): try container.encode(arr)
+        case .base64(let str): try container.encode(str)
+        }
+    }
+}
+
 /// A single embedding vector.
 public struct Embedding: Codable, Sendable {
     /// The object type, always "embedding".
     public let object: String
-    /// The embedding vector.
-    public let embedding: [Double]
+    /// The embedding vector (float array or base64 string).
+    public let embedding: EmbeddingValue
     /// The index of the embedding in the list of embeddings.
     public let index: Int
 }

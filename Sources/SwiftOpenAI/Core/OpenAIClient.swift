@@ -64,6 +64,11 @@ public final class OpenAI: Sendable {
     /// Access the Conversations API.
     public let conversations: Conversations
 
+    #if canImport(Darwin)
+    /// Access the Realtime API for low-latency bidirectional communication.
+    public let realtime: Realtime
+    #endif
+
     // MARK: - Initialization
 
     /// Creates a new OpenAI client.
@@ -105,5 +110,8 @@ public final class OpenAI: Sendable {
         self.uploads = Uploads(client: httpClient)
         self.completions = Completions(client: httpClient)
         self.conversations = Conversations(client: httpClient)
+        #if canImport(Darwin)
+        self.realtime = Realtime(configuration: configuration)
+        #endif
     }
 }

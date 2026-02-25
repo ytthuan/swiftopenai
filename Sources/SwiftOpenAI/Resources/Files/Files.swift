@@ -43,7 +43,8 @@ public struct Files: Sendable {
     /// - Parameter id: The ID of the file to retrieve.
     /// - Returns: The file object.
     public func retrieve(_ id: String) async throws -> FileObject {
-        try await client.get(path: "files/\(id)")
+        let validatedID = try id.validatePathComponent()
+        return try await client.get(path: "files/\(validatedID)")
     }
 
     /// Returns a list of files.
@@ -73,7 +74,8 @@ public struct Files: Sendable {
     /// - Parameter id: The ID of the file to delete.
     /// - Returns: The deletion confirmation.
     public func delete(_ id: String) async throws -> FileDeleted {
-        try await client.delete(path: "files/\(id)")
+        let validatedID = try id.validatePathComponent()
+        return try await client.delete(path: "files/\(validatedID)")
     }
 
     /// Returns the contents of a file as raw data.
@@ -81,7 +83,8 @@ public struct Files: Sendable {
     /// - Parameter id: The ID of the file whose content to retrieve.
     /// - Returns: The raw file data.
     public func content(_ id: String) async throws -> Data {
-        let request = try client.buildRequest(path: "files/\(id)/content", method: "GET")
+        let validatedID = try id.validatePathComponent()
+        let request = try client.buildRequest(path: "files/\(validatedID)/content", method: "GET")
         return try await client.performRaw(request: request)
     }
 }

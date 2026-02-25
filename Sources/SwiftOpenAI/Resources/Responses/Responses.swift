@@ -171,7 +171,8 @@ public struct Responses: Sendable {
     /// - Parameter id: The response ID to retrieve.
     /// - Returns: The retrieved `Response`.
     public func retrieve(_ id: String) async throws -> Response {
-        try await client.get(path: "responses/\(id)")
+        let validatedID = try id.validatePathComponent()
+        return try await client.get(path: "responses/\(validatedID)")
     }
 
     // MARK: - Delete
@@ -181,7 +182,8 @@ public struct Responses: Sendable {
     /// - Parameter id: The response ID to delete.
     /// - Returns: The deleted `ResponseDeleted`.
     public func delete(_ id: String) async throws -> ResponseDeleted {
-        try await client.delete(path: "responses/\(id)")
+        let validatedID = try id.validatePathComponent()
+        return try await client.delete(path: "responses/\(validatedID)")
     }
 
     // MARK: - Compact
