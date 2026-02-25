@@ -248,10 +248,14 @@ struct HTTPClient: Sendable {
         }
 
         guard (200..<300).contains(httpResponse.statusCode) else {
+            let maxErrorSize = 10 * 1024 * 1024 // 10 MB
             var errorData = Data()
             errorData.reserveCapacity(1024)
             for try await byte in bytes {
                 errorData.append(byte)
+                if errorData.count > maxErrorSize {
+                    throw OpenAIError.bufferOverflow(message: "Error response exceeded 10 MB")
+                }
             }
             throw try parseAPIError(data: errorData, statusCode: httpResponse.statusCode)
         }
