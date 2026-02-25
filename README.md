@@ -1,208 +1,262 @@
 # SwiftOpenAI
 
-A comprehensive Swift SDK for the [OpenAI API](https://platform.openai.com/docs/api-reference) — ported from the official [openai-python](https://github.com/openai/openai-python) SDK.
-
 [![CI](https://github.com/ytthuan/swiftopenai/actions/workflows/ci.yml/badge.svg)](https://github.com/ytthuan/swiftopenai/actions/workflows/ci.yml)
-[![Swift 6.0](https://img.shields.io/badge/Swift-6.0-orange.svg)](https://swift.org)
-[![Platforms](https://img.shields.io/badge/platforms-iOS%2016%2B%20%7C%20macOS%2013%2B%20%7C%20tvOS%2016%2B%20%7C%20watchOS%209%2B%20%7C%20visionOS%201%2B%20%7C%20Linux-lightgrey.svg)](https://swift.org)
+![Swift 6.0](https://img.shields.io/badge/Swift-6.0-orange.svg)
+![Platforms](https://img.shields.io/badge/Platforms-iOS%2016%2B%20%7C%20macOS%2013%2B%20%7C%20tvOS%2016%2B%20%7C%20watchOS%209%2B%20%7C%20visionOS%201%2B%20%7C%20Linux-blue.svg)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+
+A comprehensive, pure Swift SDK for the [OpenAI API](https://platform.openai.com/docs/api-reference) — ported from the official [openai-python](https://github.com/openai/openai-python) SDK with zero dependencies.
+
+---
 
 ## Features
 
-- **Full API coverage** — Responses, Chat Completions, Conversations, Embeddings, Images, Audio, Files, Fine-tuning, Models, Moderations, Batches, Uploads, Vector Stores
-- **Swift 6 strict concurrency** — All types are `Sendable`, all APIs are `async throws`
-- **WebSocket mode** — Persistent connections for low-latency agentic workflows (up to ~40% faster)
-- **Streaming** — Real-time `AsyncSequence`-based SSE streaming for both Chat and Responses APIs
-- **Function calling & tools** — Full support for function calling, code interpreter, file search, and web search tools
-- **Structured outputs** — JSON Schema-based structured output for deterministic response formats
-- **All Apple platforms + Linux** — iOS 16+, macOS 13+, tvOS 16+, watchOS 9+, visionOS 1+, Linux (Swift 6.0)
-- **Zero dependencies** — Pure Swift, built on Foundation `URLSession`
-- **Type-safe** — Codable request/response models with Swift enums
+- **Full API coverage** — Responses, Chat Completions, Embeddings, Images, Audio, Files, Fine-tuning, Batches, Vector Stores, Uploads, Moderations, Models, Conversations, Realtime, and Legacy Completions
+- **Async/await** — every network call uses Swift concurrency; no completion handlers
+- **Streaming** — `AsyncSequence`-based SSE streaming for Responses and Chat Completions
+- **WebSocket mode** — persistent connection for Responses API with warmup support (Darwin only)
+- **Realtime API** — full-duplex text and audio sessions via WebSocket (Darwin only)
+- **Conversations API** — first-class multi-turn conversation management
+- **Function calling** — define tools, handle round-trips, with built-in web search, code interpreter, and file search
+- **Structured outputs** — JSON Schema enforcement for reliable extraction
+- **Reasoning models** — `ReasoningConfig` for o-series models with configurable effort
+- **Context compaction** — automatic and manual context management for long conversations
+- **Swift 6 strict concurrency** — all public types are `Sendable`; zero data races
+- **Zero dependencies** — only `Foundation`; no third-party packages
+- **Cross-platform** — all Apple platforms + Linux (via `FoundationNetworking`)
+- **Automatic retries** — exponential backoff with jitter on 429/5xx, `Retry-After` header support
+- **Security hardened** — TLS 1.2+ enforcement, header injection prevention, path traversal protection, 10 MB buffer limits
+
+---
 
 ## Installation
 
-### Swift Package Manager
-
-Add to your `Package.swift`:
+Add SwiftOpenAI to your `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/ytthuan/swiftopenai.git", from: "0.4.0"),
+    .package(url: "https://github.com/ytthuan/swiftopenai.git", from: "0.6.0")
 ]
 ```
 
-Then add `"SwiftOpenAI"` to your target's dependencies:
+Then add the dependency to your target:
 
 ```swift
-.target(name: "YourApp", dependencies: [
-    .product(name: "SwiftOpenAI", package: "swiftopenai"),
-]),
+.target(
+    name: "MyApp",
+    dependencies: [
+        .product(name: "SwiftOpenAI", package: "swiftopenai")
+    ]
+)
 ```
+
+> **Note:** Requires Swift 6.0+ and swift-tools-version 6.0.
+
+---
 
 ## Quick Start
 
 ```swift
 import SwiftOpenAI
 
-// Default: api.openai.com
 let client = OpenAI(apiKey: "sk-...")
 
-// Custom endpoint (Azure, local, etc.)
-let client = OpenAI(
-    apiKey: "your-api-key",
-    baseURL: URL(string: "https://your-endpoint.openai.azure.com/openai/v1")!
+let response = try await client.responses.create(
+    model: "gpt-4.1",
+    input: .text("What is Swift concurrency?")
 )
+
+print(response.outputText ?? "")
+// → Swift concurrency is a set of language features...
+```
+
+---
+
+## Configuration
+
+The `OpenAI` client accepts the following parameters:
+
+```swift
+let client = OpenAI(
+    apiKey: "sk-...",
+    organization: "org-...",                                      // Optional
+    project: "proj-...",                                          // Optional
+    baseURL: URL(string: "https://api.openai.com/v1")!,          // Default
+    timeoutInterval: 600,                                         // Default: 600s
+    maxRetries: 2,                                                // Default: 2 retries on 429/5xx
+    retryDelay: 0.5,                                              // Default: 0.5s base for exponential backoff
+    session: nil                                                  // Optional custom URLSession
+)
+```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `apiKey` | `String` | *required* | Your OpenAI API key |
+| `organization` | `String?` | `nil` | Organization ID for multi-org accounts |
+| `project` | `String?` | `nil` | Project ID for scoped access |
+| `baseURL` | `URL` | `https://api.openai.com/v1` | API base URL (for proxies or Azure) |
+| `timeoutInterval` | `TimeInterval` | `600` | Request timeout in seconds |
+| `maxRetries` | `Int` | `2` | Max retry attempts on 429/5xx (set 0 to disable) |
+| `retryDelay` | `TimeInterval` | `0.5` | Base delay for exponential backoff |
+| `session` | `URLSession?` | `nil` | Custom URLSession (SDK creates one if nil) |
+
+### Connection Pre-warming
+
+Pre-warm the TCP/TLS handshake for faster first requests:
+
+```swift
+import SwiftOpenAI
+
+let client = OpenAI(apiKey: "sk-...")
+try await client.warmConnection()
+
+// Subsequent requests skip the handshake overhead
+let response = try await client.responses.create(
+    model: "gpt-4.1",
+    input: .text("Hello!")
+)
+```
+
+### Shutdown
+
+Invalidate and cancel the underlying URLSession when done:
+
+```swift
+client.shutdown()
 ```
 
 ---
 
 ## Responses API
 
-The [Responses API](https://platform.openai.com/docs/api-reference/responses) is OpenAI's latest API for text generation, supporting tools, streaming, structured outputs, multi-turn conversations, and more.
+The Responses API is the primary interface for text generation.
 
 ### Basic Text Generation
 
 ```swift
+import SwiftOpenAI
+
+let client = OpenAI(apiKey: "sk-...")
+
 let response = try await client.responses.create(
     model: "gpt-4.1",
-    input: .text("What is Swift concurrency?")
+    input: .text("Explain quantum computing in one paragraph.")
 )
+
+// Use the outputText convenience property
 print(response.outputText ?? "")
 ```
 
-> **Tip:** `response.outputText` is a convenience property that extracts the first text content from the output.
-
-### With System Instructions
+### System Instructions
 
 ```swift
 let response = try await client.responses.create(
     model: "gpt-4.1",
-    input: .text("Explain monads"),
-    instructions: "You are a functional programming expert. Keep answers concise."
+    input: .text("What should I cook tonight?"),
+    instructions: "You are a helpful chef. Suggest meals using common pantry ingredients."
 )
+
+print(response.outputText ?? "")
 ```
 
-### Multi-turn Conversations (previousResponseId)
+### Multi-turn with `previousResponseId`
 
-Chain responses together using `previousResponseId` — the server retains conversation context:
-
-```swift
-let r1 = try await client.responses.create(
-    model: "gpt-4.1",
-    input: .text("My name is Alice and I'm building a Swift SDK."),
-    store: true  // Required for server-side persistence
-)
-
-let r2 = try await client.responses.create(
-    model: "gpt-4.1",
-    input: .text("What's my name and what am I building?"),
-    previousResponseId: r1.id
-)
-print(r2.outputText ?? "")
-// → "Your name is Alice and you're building a Swift SDK."
-```
-
-### Stateful Context with `store: true`
-
-Use `store: true` to maintain state from turn to turn, preserving reasoning and tool context across interactions. Stored responses are persisted on the server for 30 days (or indefinitely when attached to a conversation).
+Chain responses together — the API manages context automatically:
 
 ```swift
-// Turn 1: Define tools and make a function call — store the full context
-let r1 = try await client.responses.create(
+let first = try await client.responses.create(
     model: "gpt-4.1",
-    input: .text("What's the weather in Paris?"),
-    store: true,
-    tools: [weatherTool]
+    input: .text("My name is Alice."),
+    store: true
 )
 
-// The model calls get_weather — provide the result
-let fc = r1.output.first(where: { $0.type == "function_call" })!
-let r2 = try await client.responses.create(
+let second = try await client.responses.create(
     model: "gpt-4.1",
-    input: .items([
-        .functionCallOutput(FunctionCallOutput(callId: fc.callId!, output: "{\"temp\": 18}"))
-    ]),
-    store: true,
-    previousResponseId: r1.id,
-    tools: [weatherTool]
+    input: .text("What's my name?"),
+    previousResponseId: first.id
 )
 
-// Turn 3: The model remembers the tool call and its result from prior turns
-let r3 = try await client.responses.create(
-    model: "gpt-4.1",
-    input: .text("Was it warm there?"),
-    previousResponseId: r2.id  // Full tool context is preserved
-)
-print(r3.outputText ?? "")
-// → The model remembers the weather was 18°C in Paris
-```
-
-> **Note:** Without `store: true`, the server does not persist context between turns. You would need to pass the full conversation history manually via `.items([...])`.
-
-Streaming also supports stateful context:
-
-```swift
-let stream = try await client.responses.createStream(
-    model: "gpt-4.1",
-    input: .text("Tell me more about that."),
-    store: true,
-    previousResponseId: previousId
-)
-for try await event in stream {
-    if let delta = event.delta { print(delta, terminator: "") }
-}
+print(second.outputText ?? "")
+// → Your name is Alice.
 ```
 
 ### Multi-turn with Manual History
 
-Pass conversation history directly as input items:
+Build conversations by passing previous items:
+
+```swift
+let first = try await client.responses.create(
+    model: "gpt-4.1",
+    input: .text("Remember: the secret code is 42.")
+)
+
+// Extract items from first response and append new input
+var items: [ResponseInputItem] = first.output.map { .itemReference(ItemReference(id: $0.id ?? "")) }
+items.append(.message(ResponseInputMessage(role: "user", content: .text("What was the secret code?"))))
+
+let second = try await client.responses.create(
+    model: "gpt-4.1",
+    input: .items(items)
+)
+
+print(second.outputText ?? "")
+// → The secret code is 42.
+```
+
+### Store, Retrieve, Delete
+
+```swift
+// Create a stored response
+let response = try await client.responses.create(
+    model: "gpt-4.1",
+    input: .text("Hello!"),
+    store: true
+)
+
+// Retrieve it later
+let retrieved = try await client.responses.retrieve(response.id)
+print(retrieved.outputText ?? "")
+
+// Delete when no longer needed
+let deleted = try await client.responses.delete(response.id)
+print(deleted.deleted)
+// → true
+```
+
+### Metadata
+
+Attach key-value metadata to responses:
 
 ```swift
 let response = try await client.responses.create(
     model: "gpt-4.1",
-    input: .items([
-        .message(ResponseInputMessage(role: "user", content: "My favorite color is blue.")),
-        .message(ResponseInputMessage(role: "assistant", content: "Got it! Blue is a great color.")),
-        .message(ResponseInputMessage(role: "user", content: "What is my favorite color?")),
-    ])
+    input: .text("Summarize this document."),
+    metadata: ["user_id": "u_123", "session": "onboarding"]
 )
-```
-
-### Store, Retrieve, and Delete
-
-```swift
-let created = try await client.responses.create(
-    model: "gpt-4.1",
-    input: .text("Hello!"),
-    store: true,
-    metadata: ["session": "demo", "user": "alice"]
-)
-
-let retrieved = try await client.responses.retrieve(created.id)
-let deleted = try await client.responses.delete(created.id)
-print(deleted.deleted) // true
 ```
 
 ---
 
 ## Streaming (Responses API)
 
-Stream responses in real-time using `AsyncSequence`:
-
 ### Text Streaming
 
 ```swift
+import SwiftOpenAI
+
+let client = OpenAI(apiKey: "sk-...")
+
 let stream = try await client.responses.createStream(
     model: "gpt-4.1",
-    input: .text("Write a poem about Swift.")
+    input: .text("Write a haiku about Swift.")
 )
 
 for try await event in stream {
-    // event.type tells you what kind of event (e.g. "response.output_text.delta")
-    if let delta = event.delta {
-        print(delta, terminator: "")  // Print text chunks as they arrive
+    if event.type == "response.output_text.delta", let delta = event.delta {
+        print(delta, terminator: "")
     }
 }
-print() // Newline at end
+print() // newline
 ```
 
 ### Streaming with Instructions
@@ -210,161 +264,147 @@ print() // Newline at end
 ```swift
 let stream = try await client.responses.createStream(
     model: "gpt-4.1",
-    input: .text("Explain recursion"),
-    instructions: "Answer in exactly one sentence."
+    input: .text("What are closures?"),
+    instructions: "Explain like I'm five."
 )
 
-var fullText = ""
 for try await event in stream {
-    if let delta = event.delta {
-        fullText += delta
+    if event.type == "response.output_text.delta", let delta = event.delta {
+        print(delta, terminator: "")
     }
 }
-print(fullText)
 ```
 
 ### Streaming with Function Calls
 
-When using tools with streaming, function call arguments arrive incrementally. Use the `response.completed` event to get the final response:
-
 ```swift
-let tool = ResponseTool.function(FunctionToolDefinition(
-    name: "get_weather",
-    description: "Get current weather for a city.",
-    parameters: [
-        "type": AnyCodable("object"),
-        "properties": AnyCodable([
-            "city": AnyCodable(["type": AnyCodable("string")] as [String: AnyCodable])
-        ] as [String: AnyCodable]),
-        "required": AnyCodable(["city"]),
-        "additionalProperties": AnyCodable(false),
-    ],
-    strict: true
-))
+let tools: [ResponseTool] = [
+    .function(FunctionToolDefinition(
+        name: "get_weather",
+        description: "Get weather for a location",
+        parameters: ["type": "object", "properties": ["location": ["type": "string"]], "required": ["location"]]
+    ))
+]
 
 let stream = try await client.responses.createStream(
     model: "gpt-4.1",
-    input: .text("What's the weather in Paris?"),
-    tools: [tool]
+    input: .text("What's the weather in Tokyo?"),
+    tools: tools
 )
+
+var functionArgs = ""
+var functionCallId = ""
 
 for try await event in stream {
     switch event.type {
-    case "response.output_text.delta":
-        print(event.delta ?? "", terminator: "")
     case "response.function_call_arguments.delta":
-        print("Args chunk: \(event.delta ?? "")")
-    case "response.completed":
-        if let response = event.response,
-           let fc = response.output.first(where: { $0.type == "function_call" }) {
-            print("Function: \(fc.name ?? "")(\(fc.arguments ?? ""))")
-        }
+        functionArgs += event.delta ?? ""
+    case "response.function_call_arguments.done":
+        functionCallId = event.callId ?? ""
+        print("Function call: get_weather(\(functionArgs))")
     default:
         break
     }
 }
 ```
 
-### Stream Event Types
+### Event Type Reference
 
-| Event Type | Description | Key Fields |
-|-----------|-------------|------------|
-| `response.created` | Stream started | `response` |
-| `response.output_text.delta` | Text chunk arrived | `delta` |
-| `response.output_text.done` | Text output complete | — |
-| `response.function_call_arguments.delta` | Function args chunk | `delta` |
-| `response.function_call_arguments.done` | Function args complete | — |
-| `response.output_item.added` | New output item | `item`, `outputIndex` |
-| `response.output_item.done` | Output item complete | `item` |
-| `response.completed` | Full response ready | `response` |
-| `response.failed` | Response failed | `response` |
+<details>
+<summary>Expand event types</summary>
+
+| Event Type | Description |
+|-----------|-------------|
+| `response.created` | Response object created |
+| `response.in_progress` | Generation started |
+| `response.completed` | Generation finished |
+| `response.failed` | Generation failed |
+| `response.incomplete` | Generation stopped early |
+| `response.output_item.added` | New output item started |
+| `response.output_item.done` | Output item finished |
+| `response.content_part.added` | Content part started |
+| `response.content_part.done` | Content part finished |
+| `response.output_text.delta` | Text token delta |
+| `response.output_text.done` | Full text output done |
+| `response.function_call_arguments.delta` | Function argument delta |
+| `response.function_call_arguments.done` | Function arguments complete |
+| `response.reasoning_summary_text.delta` | Reasoning summary delta |
+| `response.reasoning_summary_text.done` | Reasoning summary done |
+
+</details>
 
 ---
 
 ## Function Calling (Responses API)
 
-### Defining Tools
+### Define Tools and Handle Round-trips
 
 ```swift
-let weatherTool = ResponseTool.function(FunctionToolDefinition(
-    name: "get_weather",
-    description: "Get current weather for a city.",
-    parameters: [
-        "type": AnyCodable("object"),
-        "properties": AnyCodable([
-            "city": AnyCodable([
-                "type": AnyCodable("string"),
-                "description": AnyCodable("City name"),
-            ] as [String: AnyCodable]),
-            "unit": AnyCodable([
-                "type": AnyCodable("string"),
-                "enum": AnyCodable(["celsius", "fahrenheit"]),
-            ] as [String: AnyCodable]),
-        ] as [String: AnyCodable]),
-        "required": AnyCodable(["city"]),
-        "additionalProperties": AnyCodable(false),
-    ],
-    strict: true  // Enforces schema validation
-))
-```
+import SwiftOpenAI
 
-> **Important:** When `strict: true`, every object in your schema **must** include `"additionalProperties": AnyCodable(false)`.
+let client = OpenAI(apiKey: "sk-...")
 
-### Full Function Calling Round-Trip
+// 1. Define a function tool
+let tools: [ResponseTool] = [
+    .function(FunctionToolDefinition(
+        name: "get_weather",
+        description: "Get current weather for a city",
+        parameters: [
+            "type": "object",
+            "properties": [
+                "city": ["type": "string", "description": "City name"]
+            ],
+            "required": ["city"]
+        ]
+    ))
+]
 
-```swift
-// Step 1: Send request with tools
-let r1 = try await client.responses.create(
+// 2. Send the request
+let response = try await client.responses.create(
     model: "gpt-4.1",
-    input: .text("What's the weather in Tokyo?"),
-    tools: [weatherTool]
+    input: .text("What's the weather in Paris?"),
+    tools: tools
 )
 
-// Step 2: Check if the model wants to call a function
-guard let fc = r1.output.first(where: { $0.type == "function_call" }),
-      let callId = fc.callId,
-      let name = fc.name,
-      let args = fc.arguments else {
-    print("No function call")
-    return
+// 3. Check for function calls in the output
+for item in response.output {
+    if item.type == "function_call", let name = item.name, let args = item.arguments {
+        print("Call: \(name)(\(args))")
+        // → Call: get_weather({"city":"Paris"})
+
+        // 4. Execute the function and return result
+        let result = try await client.responses.create(
+            model: "gpt-4.1",
+            input: .items([
+                .itemReference(ItemReference(id: item.id ?? "")),
+                .functionCallOutput(FunctionCallOutput(
+                    callId: item.callId ?? "",
+                    output: "{\"temp\": \"18°C\", \"condition\": \"Cloudy\"}"
+                ))
+            ]),
+            tools: tools
+        )
+
+        print(result.outputText ?? "")
+        // → The weather in Paris is 18°C and cloudy.
+    }
 }
-
-print("Model called: \(name)(\(args))")
-// → Model called: get_weather({"city":"Tokyo"})
-
-// Step 3: Execute the function (your code) and return results
-let weatherResult = "{\"temp\": 22, \"condition\": \"sunny\", \"unit\": \"celsius\"}"
-
-let r2 = try await client.responses.create(
-    model: "gpt-4.1",
-    input: .items([
-        .message(ResponseInputMessage(role: "user", content: "What's the weather in Tokyo?")),
-        .functionCall(FunctionCallItem(callId: callId, name: name, arguments: args)),
-        .functionCallOutput(FunctionCallOutput(callId: callId, output: weatherResult)),
-    ]),
-    tools: [weatherTool]
-)
-
-print(r2.outputText ?? "")
-// → "The weather in Tokyo is 22°C and sunny."
 ```
 
-### Tool Choice
-
-Control which tools the model uses:
+### Tool Choice Options
 
 ```swift
 // Let the model decide (default)
 toolChoice: .auto
 
-// Force the model to use a tool
+// Force the model to call a tool
 toolChoice: .required
+
+// Disable tool use
+toolChoice: .disabled
 
 // Force a specific function
 toolChoice: .function("get_weather")
-
-// Disable all tools
-toolChoice: .disabled
 ```
 
 ### Multiple Tools
@@ -373,150 +413,228 @@ toolChoice: .disabled
 let tools: [ResponseTool] = [
     .function(FunctionToolDefinition(
         name: "get_weather",
-        description: "Get weather for a city",
-        parameters: weatherSchema,
-        strict: true
+        description: "Get current weather",
+        parameters: ["type": "object", "properties": ["city": ["type": "string"]], "required": ["city"]]
     )),
     .function(FunctionToolDefinition(
-        name: "calculate",
-        description: "Evaluate a math expression",
-        parameters: calcSchema,
-        strict: true
-    )),
+        name: "get_time",
+        description: "Get current time in a timezone",
+        parameters: ["type": "object", "properties": ["timezone": ["type": "string"]], "required": ["timezone"]]
+    ))
 ]
 
 let response = try await client.responses.create(
     model: "gpt-4.1",
-    input: .text("What's 15°C in Fahrenheit? Use the calculate tool."),
+    input: .text("What's the weather and time in London?"),
     tools: tools,
-    toolChoice: .required  // Force tool usage
+    parallelToolCalls: true  // Allow multiple simultaneous calls
 )
 ```
 
 ### Built-in Tools
 
 ```swift
-// Web search
-.webSearch(WebSearchToolDefinition())
+// Web Search
+let response = try await client.responses.create(
+    model: "gpt-4.1",
+    input: .text("What happened in tech news today?"),
+    tools: [.webSearch(WebSearchToolDefinition())]
+)
 
-// Code interpreter
-.codeInterpreter(CodeInterpreterToolDefinition(container: "container-id"))
+// Code Interpreter
+let response = try await client.responses.create(
+    model: "gpt-4.1",
+    input: .text("Calculate the standard deviation of [4, 8, 15, 16, 23, 42]"),
+    tools: [.codeInterpreter(CodeInterpreterToolDefinition())]
+)
 
-// File search (vector store)
-.fileSearch(FileSearchToolDefinition(vectorStoreIds: ["vs_abc123"]))
+// File Search (requires a vector store)
+let response = try await client.responses.create(
+    model: "gpt-4.1",
+    input: .text("Find references to authentication in the docs"),
+    tools: [.fileSearch(FileSearchToolDefinition(vectorStoreIds: ["vs_abc123"]))]
+)
 ```
 
 ---
 
-## Structured Outputs (JSON Schema)
+## Structured Outputs
 
-Force the model to return JSON matching a specific schema:
+Enforce a JSON Schema on model output:
 
 ```swift
+import SwiftOpenAI
+
+let client = OpenAI(apiKey: "sk-...")
+
 let schema: [String: AnyCodable] = [
-    "type": AnyCodable("object"),
-    "properties": AnyCodable([
-        "name": AnyCodable(["type": AnyCodable("string")] as [String: AnyCodable]),
-        "population": AnyCodable(["type": AnyCodable("number")] as [String: AnyCodable]),
-        "capital": AnyCodable(["type": AnyCodable("string")] as [String: AnyCodable]),
-    ] as [String: AnyCodable]),
-    "required": AnyCodable(["name", "population", "capital"]),
-    "additionalProperties": AnyCodable(false),
+    "type": "object",
+    "properties": [
+        "name": ["type": "string"],
+        "age": ["type": "integer"],
+        "hobbies": [
+            "type": "array",
+            "items": ["type": "string"]
+        ]
+    ],
+    "required": ["name", "age", "hobbies"],
+    "additionalProperties": false
 ]
 
 let response = try await client.responses.create(
     model: "gpt-4.1",
-    input: .text("Give me info about France."),
+    input: .text("Generate a profile for a fictional character."),
     text: ResponseTextConfig(format: .jsonSchema(ResponseTextFormatJSONSchema(
-        name: "country_info",
+        name: "character_profile",
         schema: schema,
         strict: true
     )))
 )
 
-let json = response.outputText ?? "{}"
-print(json)
-// → {"name":"France","population":67390000,"capital":"Paris"}
+print(response.outputText ?? "")
+// → {"name":"Elena Voss","age":34,"hobbies":["rock climbing","astrophotography","cooking"]}
+```
+
+---
+
+## Reasoning
+
+Use o-series models with configurable reasoning effort:
+
+```swift
+import SwiftOpenAI
+
+let client = OpenAI(apiKey: "sk-...")
+
+let response = try await client.responses.create(
+    model: "o3",
+    input: .text("What is the sum of the first 50 prime numbers?"),
+    reasoning: ReasoningConfig(effort: "high")  // "low", "medium", "high"
+)
+
+print(response.outputText ?? "")
+
+// Access reasoning token usage
+if let details = response.usage?.outputTokensDetails {
+    print("Reasoning tokens: \(details.reasoningTokens ?? 0)")
+}
+```
+
+### Streaming with Reasoning
+
+```swift
+let stream = try await client.responses.createStream(
+    model: "o3",
+    input: .text("Prove that √2 is irrational."),
+    reasoning: ReasoningConfig(effort: "high")
+)
+
+for try await event in stream {
+    switch event.type {
+    case "response.reasoning_summary_text.delta":
+        print("[reasoning] \(event.delta ?? "")", terminator: "")
+    case "response.output_text.delta":
+        print(event.delta ?? "", terminator: "")
+    default:
+        break
+    }
+}
 ```
 
 ---
 
 ## Compaction
 
-Reduce token usage in long conversations:
+Manage long conversations by compacting context.
 
-### Automatic (Server-Side)
+### Automatic Compaction
 
 ```swift
 let response = try await client.responses.create(
     model: "gpt-4.1",
     input: .text("Continue our discussion..."),
     previousResponseId: previousId,
-    contextManagement: [ContextManagement(compactThreshold: 5000)]
+    contextManagement: ContextManagement(
+        type: "compaction",
+        compactThreshold: 10000  // Compact when context exceeds this many tokens
+    )
 )
 ```
 
-### Manual (Standalone Endpoint)
+### Manual Compaction
 
 ```swift
 let compacted = try await client.responses.compact(
     model: "gpt-4.1",
-    previousResponseId: longConversationId
+    input: .text("Summarize our conversation so far."),
+    previousResponseId: previousId
 )
-print("Tokens used: \(compacted.usage?.inputTokens ?? 0) in, \(compacted.usage?.outputTokens ?? 0) out")
+
+// Use compacted context for the next request
+let response = try await client.responses.create(
+    model: "gpt-4.1",
+    input: .text("Now, based on that summary, what should we do next?"),
+    previousResponseId: compacted.id
+)
 ```
 
 ---
 
-## WebSocket Mode *(New in v0.3.0)*
+## WebSocket Mode
 
-Use persistent WebSocket connections for lower-latency agentic workflows. WebSocket mode keeps a connection open to `/v1/responses` and sends only incremental input per turn, reducing per-turn overhead by up to **~40%** for tool-call-heavy workflows.
-
-> **Note:** WebSocket mode is Apple-only (macOS 13+, iOS 16+). Requires `URLSessionWebSocketTask`.
+Persistent WebSocket connections for the Responses API (Darwin only).
 
 ### Basic Usage
 
 ```swift
+import SwiftOpenAI
+
+let client = OpenAI(apiKey: "sk-...")
+
 let ws = client.responses.connectWebSocket()
 await ws.connect()
 
 let stream = try await ws.create(
-    model: "gpt-5.2",
-    input: .text("Explain quantum computing briefly."),
-    store: false
+    model: "gpt-4.1",
+    input: .text("Hello from WebSocket!")
 )
 
 for try await event in stream {
-    if let delta = event.delta { print(delta, terminator: "") }
+    if event.type == "response.output_text.delta" {
+        print(event.delta ?? "", terminator: "")
+    }
 }
-
-await ws.close()
 ```
 
-### Multi-Turn (Incremental Input)
-
-Continue a conversation by sending only new input plus `previousResponseId`:
+### Multi-turn
 
 ```swift
 let ws = client.responses.connectWebSocket()
 await ws.connect()
 
-// Turn 1
-let stream1 = try await ws.create(model: "gpt-5.2", input: .text("My name is Alice."), store: false)
-var responseId: String?
+// First turn
+let stream1 = try await ws.create(
+    model: "gpt-4.1",
+    input: .text("My name is Bob."),
+    store: true
+)
+var firstResponseId = ""
 for try await event in stream1 {
-    if event.type == "response.completed" { responseId = event.response?.id }
+    if event.type == "response.completed", let id = event.response?.id {
+        firstResponseId = id
+    }
 }
 
-// Turn 2 — only sends new input, server reuses connection-local context
+// Second turn — reference the first
 let stream2 = try await ws.create(
-    model: "gpt-5.2",
+    model: "gpt-4.1",
     input: .text("What's my name?"),
-    previousResponseId: responseId,
-    store: false
+    previousResponseId: firstResponseId
 )
 for try await event in stream2 {
-    if let delta = event.delta { print(delta, terminator: "") }
+    if event.type == "response.output_text.delta" {
+        print(event.delta ?? "", terminator: "")
+    }
 }
 
 await ws.close()
@@ -525,211 +643,374 @@ await ws.close()
 ### Function Calling over WebSocket
 
 ```swift
-let ws = client.responses.connectWebSocket()
-await ws.connect()
+let tools: [ResponseTool] = [
+    .function(FunctionToolDefinition(
+        name: "lookup",
+        description: "Look up a value",
+        parameters: ["type": "object", "properties": ["key": ["type": "string"]], "required": ["key"]]
+    ))
+]
 
-let stream1 = try await ws.create(
-    model: "gpt-5.2",
-    input: .text("What's the weather in Tokyo?"),
-    tools: [weatherTool],
-    store: false
+let stream = try await ws.create(
+    model: "gpt-4.1",
+    input: .text("Look up the value for 'status'"),
+    tools: tools
 )
 
-var callId: String?
-var responseId: String?
-for try await event in stream1 {
-    if event.type == "response.completed" {
-        responseId = event.response?.id
-        if let fc = event.response?.output.first(where: { $0.type == "function_call" }) {
-            callId = fc.callId
-        }
+for try await event in stream {
+    if event.type == "response.function_call_arguments.done" {
+        print("Function call: \(event.name ?? "")(\(event.arguments ?? ""))")
     }
 }
-
-// Provide tool result — only incremental input, low latency
-let stream2 = try await ws.create(
-    model: "gpt-5.2",
-    input: .items([
-        .functionCallOutput(FunctionCallOutput(callId: callId!, output: "{\"temp\": 22}"))
-    ]),
-    previousResponseId: responseId,
-    tools: [weatherTool],
-    store: false
-)
-for try await event in stream2 {
-    if let delta = event.delta { print(delta, terminator: "") }
-}
-
-await ws.close()
 ```
 
-### Warmup (Pre-warm State)
+### Connection Warmup
 
-Pre-warm request state for even faster first response:
+Pre-authenticate and reduce latency for the first request:
 
 ```swift
 let ws = client.responses.connectWebSocket()
 await ws.connect()
 
-// Warmup — no model output, but prepares state
-let warmupId = try await ws.warmup(
-    model: "gpt-5.2",
-    input: .text("System ready."),
-    tools: [tool1, tool2]
+let responseId = try await ws.warmup(
+    model: "gpt-4.1",
+    input: .text("Warm up context"),
+    instructions: "Be concise."
 )
-
-// First real turn — faster because state was pre-warmed
-let stream = try await ws.create(
-    model: "gpt-5.2",
-    input: .text("Run the analysis."),
-    previousResponseId: warmupId,
-    tools: [tool1, tool2],
-    store: false
-)
+// Connection is now warm — subsequent create() calls are faster
 ```
 
-### Key Behaviors
-- **Sequential execution** — one response at a time per connection
-- **60-minute limit** — reconnect when the limit is reached
-- **ZDR compatible** — works with `store: false` and Zero Data Retention
-- **Connection-local cache** — the most recent response is cached in memory for fast continuation
+> **Tip:** WebSocket mode is ideal for interactive applications where latency matters. The connection persists across multiple requests, avoiding repeated HTTP handshakes.
 
 ---
 
 ## Conversations API
 
-Server-managed conversation state that persists across sessions:
+Create and manage multi-turn conversations as first-class objects.
+
+### Create a Conversation
 
 ```swift
-// Create a conversation
-let conv = try await client.conversations.create(
-    items: [.system("You are a helpful tutor.")],
-    metadata: ["topic": "math"]
-)
+import SwiftOpenAI
 
-// Use conversation with Responses API
-let r1 = try await client.responses.create(
+let client = OpenAI(apiKey: "sk-...")
+
+let conversation = try await client.conversations.create()
+print(conversation.id)
+```
+
+### Use with Responses
+
+```swift
+let conversation = try await client.conversations.create()
+
+let response = try await client.responses.create(
     model: "gpt-4.1",
-    input: .text("What is calculus?"),
-    conversation: conv.id
+    input: .text("I'm learning Swift."),
+    conversation: conversation.id,
+    store: true
 )
 
-// Continue in same conversation — context is retained
-let r2 = try await client.responses.create(
+let followUp = try await client.responses.create(
     model: "gpt-4.1",
-    input: .text("Give me an example of a derivative."),
-    conversation: conv.id
+    input: .text("What should I learn first?"),
+    conversation: conversation.id,
+    previousResponseId: response.id
 )
 
-// Manage items
-let items = try await client.conversations.items.list(conversationId: conv.id)
-let item = try await client.conversations.items.retrieve("item_abc", conversationId: conv.id)
+print(followUp.outputText ?? "")
+```
+
+### Manage Items
+
+```swift
+// Add items to a conversation
+let items = try await client.conversations.items.create(
+    conversationId: conversation.id,
+    items: [
+        ConversationInputItem(role: "user", content: "What is SwiftUI?")
+    ]
+)
+
+// List items
+let list = try await client.conversations.items.list(conversationId: conversation.id)
+for item in list.data {
+    print("\(item.role ?? ""): \(item.content ?? "")")
+}
+
+// Retrieve a single item
+let item = try await client.conversations.items.retrieve(
+    list.data.first!.id,
+    conversationId: conversation.id
+)
+
+// Delete an item
+_ = try await client.conversations.items.delete(
+    item.id,
+    conversationId: conversation.id
+)
+```
+
+### Conversation Lifecycle
+
+```swift
+// Retrieve
+let conv = try await client.conversations.retrieve(conversation.id)
 
 // Update metadata
-try await client.conversations.update(conv.id, metadata: ["status": "completed"])
+let updated = try await client.conversations.update(
+    conversation.id,
+    metadata: ["topic": "swift-learning"]
+)
 
-// Delete when done
-try await client.conversations.delete(conv.id)
+// Delete
+let deleted = try await client.conversations.delete(conversation.id)
 ```
+
+### Function Calling in Conversations
+
+```swift
+let tools: [ResponseTool] = [
+    .function(FunctionToolDefinition(
+        name: "search_docs",
+        description: "Search documentation",
+        parameters: ["type": "object", "properties": ["query": ["type": "string"]], "required": ["query"]]
+    ))
+]
+
+let conversation = try await client.conversations.create()
+
+let response = try await client.responses.create(
+    model: "gpt-4.1",
+    input: .text("Find docs about concurrency"),
+    conversation: conversation.id,
+    tools: tools
+)
+
+// Handle function calls, then continue the conversation
+for item in response.output where item.type == "function_call" {
+    let result = try await client.responses.create(
+        model: "gpt-4.1",
+        input: .items([
+            .itemReference(ItemReference(id: item.id ?? "")),
+            .functionCallOutput(FunctionCallOutput(
+                callId: item.callId ?? "",
+                output: "{\"results\": [\"Swift Concurrency Guide\"]}"
+            ))
+        ]),
+        conversation: conversation.id,
+        previousResponseId: response.id,
+        tools: tools
+    )
+    print(result.outputText ?? "")
+}
+```
+
+---
+
+## Realtime API
+
+> **Note:** The Realtime API is available on Darwin platforms only (iOS, macOS, tvOS, watchOS, visionOS).
+
+Full-duplex WebSocket sessions for text and audio interactions.
+
+### Text Example
+
+```swift
+import SwiftOpenAI
+
+let client = OpenAI(apiKey: "sk-...")
+
+let connection = client.realtime.connect(model: "gpt-4o-realtime-preview")
+let events = try await connection.start()
+
+// Configure the session
+try await connection.sessionUpdate(RealtimeSessionConfig(
+    modalities: ["text"],
+    instructions: "Be concise and helpful."
+))
+
+// Send text and request a response
+try await connection.sendText("Hello! What is Swift?")
+try await connection.createResponse()
+
+// Listen for events
+for try await event in events {
+    if event.type == "response.text.delta", let delta = event.delta {
+        print(delta, terminator: "")
+    }
+    if event.type == "response.text.done" {
+        break
+    }
+}
+print()
+
+connection.close()
+```
+
+### Audio Example
+
+```swift
+let connection = client.realtime.connect(model: "gpt-4o-realtime-preview")
+let events = try await connection.start()
+
+try await connection.sessionUpdate(RealtimeSessionConfig(
+    modalities: ["text", "audio"],
+    instructions: "Respond naturally."
+))
+
+// Send audio data (base64-encoded PCM16)
+try await connection.appendAudio(base64AudioChunk)
+try await connection.commitAudio()
+try await connection.createResponse()
+
+// Receive audio/text events
+for try await event in events {
+    switch event.type {
+    case "response.audio.delta":
+        // Handle audio delta (base64 encoded)
+        break
+    case "response.text.delta":
+        print(event.delta ?? "", terminator: "")
+    case "response.done":
+        break
+    default:
+        break
+    }
+}
+
+connection.close()
+```
+
+### RealtimeConnection Methods
+
+| Method | Description |
+|--------|-------------|
+| `start()` | Connect and return event stream |
+| `sessionUpdate(_:)` | Configure session (modalities, instructions, etc.) |
+| `sendText(_:role:)` | Send a text message (default role: `"user"`) |
+| `appendAudio(_:)` | Append base64-encoded audio data |
+| `commitAudio()` | Signal end of audio input |
+| `clearAudioBuffer()` | Clear pending audio |
+| `createItem(_:after:)` | Add a conversation item |
+| `deleteItem(_:)` | Remove a conversation item |
+| `createResponse(_:)` | Request a model response |
+| `cancelResponse()` | Cancel in-progress response |
+| `close()` | Close the WebSocket connection |
 
 ---
 
 ## Chat Completions API
 
-The [Chat Completions API](https://platform.openai.com/docs/api-reference/chat) for conversational text generation:
-
-### Basic Chat
+### Basic Usage
 
 ```swift
-let response = try await client.chat.completions.create(
+import SwiftOpenAI
+
+let client = OpenAI(apiKey: "sk-...")
+
+let completion = try await client.chat.completions.create(
     model: "gpt-4.1",
     messages: [
-        .system("You are a helpful assistant."),
-        .user("What is the capital of France?"),
+        .user(content: "What is the capital of France?")
     ]
 )
-print(response.choices.first?.message.content ?? "")
+
+print(completion.choices.first?.message.content ?? "")
+// → The capital of France is Paris.
 ```
 
-### Multi-turn Chat
+### Multi-turn
 
 ```swift
-var messages: [ChatCompletionMessage] = [
-    .system("You are a geography tutor."),
-    .user("What continent is Brazil in?"),
-]
+let completion = try await client.chat.completions.create(
+    model: "gpt-4.1",
+    messages: [
+        .system(content: "You are a helpful math tutor."),
+        .user(content: "What is 2 + 2?"),
+        .assistant(content: "2 + 2 = 4"),
+        .user(content: "What about 2 + 3?")
+    ]
+)
 
-let r1 = try await client.chat.completions.create(model: "gpt-4.1", messages: messages)
-let reply = r1.choices.first?.message.content ?? ""
-
-messages.append(.assistant(reply))
-messages.append(.user("What is its capital?"))
-
-let r2 = try await client.chat.completions.create(model: "gpt-4.1", messages: messages)
+print(completion.choices.first?.message.content ?? "")
 ```
 
-### Chat Streaming
+### Streaming
 
 ```swift
 let stream = try await client.chat.completions.createStream(
     model: "gpt-4.1",
-    messages: [.user("Tell me a story")]
+    messages: [
+        .user(content: "Write a short poem about coding.")
+    ]
 )
+
 for try await chunk in stream {
-    if let content = chunk.choices.first?.delta?.content {
-        print(content, terminator: "")
+    if let delta = chunk.choices.first?.delta.content {
+        print(delta, terminator: "")
     }
 }
 ```
 
-### Chat Function Calling
+### Function Calling
 
 ```swift
-let tool = ChatCompletionTool(
-    function: ChatCompletionToolFunction(
-        name: "get_weather",
-        description: "Get current weather",
-        parameters: [
-            "type": AnyCodable("object"),
-            "properties": AnyCodable([
-                "city": AnyCodable(["type": AnyCodable("string")] as [String: AnyCodable])
-            ] as [String: AnyCodable]),
-            "required": AnyCodable(["city"]),
-            "additionalProperties": AnyCodable(false),
-        ]
-    )
-)
+let tools: [ChatCompletionTool] = [
+    ChatCompletionTool(function: FunctionDefinition(
+        name: "get_stock_price",
+        description: "Get current stock price",
+        parameters: ["type": "object", "properties": ["symbol": ["type": "string"]], "required": ["symbol"]]
+    ))
+]
 
-let r1 = try await client.chat.completions.create(
+let completion = try await client.chat.completions.create(
     model: "gpt-4.1",
-    messages: [.user("Weather in London?")],
-    tools: [tool]
+    messages: [.user(content: "What's Apple's stock price?")],
+    tools: tools
 )
 
-if let toolCall = r1.choices.first?.message.toolCalls?.first {
-    // Execute tool, then continue:
-    let r2 = try await client.chat.completions.create(
-        model: "gpt-4.1",
-        messages: [
-            .user("Weather in London?"),
-            .assistant("", toolCalls: [toolCall]),
-            .tool("{\"temp\": 12}", toolCallId: toolCall.id),
-        ],
-        tools: [tool]
-    )
+if let toolCall = completion.choices.first?.message.toolCalls?.first {
+    print("Function: \(toolCall.function.name)")
+    print("Arguments: \(toolCall.function.arguments)")
 }
 ```
 
 ### JSON Mode
 
 ```swift
-let response = try await client.chat.completions.create(
+let completion = try await client.chat.completions.create(
     model: "gpt-4.1",
     messages: [
-        .system("Respond in JSON."),
-        .user("Return: {\"answer\": 42}"),
+        .system(content: "Respond in JSON."),
+        .user(content: "List 3 colors with hex codes.")
     ],
     responseFormat: .jsonObject
+)
+
+print(completion.choices.first?.message.content ?? "")
+// → {"colors":[{"name":"red","hex":"#FF0000"},{"name":"green","hex":"#00FF00"},{"name":"blue","hex":"#0000FF"}]}
+```
+
+### Structured Outputs (Chat)
+
+```swift
+let completion = try await client.chat.completions.create(
+    model: "gpt-4.1",
+    messages: [.user(content: "Generate a user profile.")],
+    responseFormat: .jsonSchema(ChatCompletionResponseFormatJSONSchema(
+        name: "user_profile",
+        schema: [
+            "type": "object",
+            "properties": [
+                "name": ["type": "string"],
+                "email": ["type": "string"]
+            ],
+            "required": ["name", "email"],
+            "additionalProperties": false
+        ],
+        strict: true
+    ))
 )
 ```
 
@@ -740,161 +1021,498 @@ let response = try await client.chat.completions.create(
 ### Embeddings
 
 ```swift
-let response = try await client.embeddings.create(
+let result = try await client.embeddings.create(
     model: "text-embedding-3-small",
-    input: .string("Hello world")
+    input: .string("Swift is a powerful language.")
 )
-let dimensions = response.data.first?.embedding.count ?? 0
 
-// Batch embeddings
-let batch = try await client.embeddings.create(
-    model: "text-embedding-3-small",
-    input: .strings(["Hello", "World"])
-)
+print("Dimensions: \(result.data.first?.embedding.count ?? 0)")
 ```
 
 ### Models
 
 ```swift
+// List all models
 let models = try await client.models.list()
+for model in models.data {
+    print(model.id)
+}
+
+// Retrieve a specific model
 let model = try await client.models.retrieve("gpt-4.1")
+
+// Delete a fine-tuned model
+let deleted = try await client.models.delete("ft:gpt-4.1:my-org:custom:id")
 ```
 
 ### Files
 
 ```swift
-let files = try await client.files.list()
+// Upload
 let file = try await client.files.create(
-    file: data, filename: "training.jsonl", purpose: "fine-tune"
+    file: trainingData,
+    filename: "training.jsonl",
+    purpose: "fine-tune"
 )
-let content = try await client.files.content(file.id)
-try await client.files.delete(file.id)
+
+// List
+let files = try await client.files.list()
+
+// Retrieve
+let info = try await client.files.retrieve(file.id)
+
+// Download content
+let data = try await client.files.content(file.id)
+
+// Delete
+let deleted = try await client.files.delete(file.id)
 ```
 
 ### Images
 
 ```swift
+// Generate
 let images = try await client.images.generate(
-    prompt: "A sunset over mountains",
+    prompt: "A sunset over mountains, digital art",
     model: "dall-e-3",
-    size: "1024x1024"
+    size: "1024x1024",
+    quality: "hd"
 )
+print(images.data.first?.url ?? "")
+
+// Edit (requires PNG, < 4 MB)
+let edited = try await client.images.edit(
+    image: pngData,
+    prompt: "Add a rainbow to the sky"
+)
+
+// Variation
+let variation = try await client.images.createVariation(image: pngData)
 ```
 
 ### Audio
 
 ```swift
-// Speech to text
+// Transcription
 let transcription = try await client.audio.transcriptions.create(
-    file: audioData, filename: "recording.mp3", model: "whisper-1"
+    file: audioData,
+    filename: "recording.mp3",
+    model: "whisper-1"
 )
+print(transcription.text)
 
-// Text to speech
-let audioData = try await client.audio.speech.create(
-    model: "tts-1", input: "Hello world!", voice: "alloy"
+// Translation (to English)
+let translation = try await client.audio.translations.create(
+    file: audioData,
+    filename: "french_audio.mp3",
+    model: "whisper-1"
 )
+print(translation.text)
+
+// Text-to-Speech
+let speechData = try await client.audio.speech.create(
+    model: "tts-1-hd",
+    input: "Hello, world!",
+    voice: "nova"
+)
+// speechData is raw audio bytes (MP3 by default)
 ```
 
 ### Moderations
 
 ```swift
 let result = try await client.moderations.create(
-    input: .string("Check this text for policy violations")
+    input: .string("Some text to check.")
 )
+
+let flagged = result.results.first?.flagged ?? false
+print("Flagged: \(flagged)")
+```
+
+### Fine-tuning
+
+```swift
+// Create a job
+let job = try await client.fineTuning.jobs.create(
+    model: "gpt-4.1",
+    trainingFile: "file-abc123"
+)
+
+// List jobs
+let jobs = try await client.fineTuning.jobs.list()
+
+// Retrieve
+let status = try await client.fineTuning.jobs.retrieve(job.id)
+
+// List events
+let events = try await client.fineTuning.jobs.listEvents(job.id)
+
+// List checkpoints
+let checkpoints = try await client.fineTuning.jobs.listCheckpoints(job.id)
+
+// Cancel
+let cancelled = try await client.fineTuning.jobs.cancel(job.id)
+```
+
+### Batches
+
+```swift
+// Create
+let batch = try await client.batches.create(
+    inputFileId: "file-abc123",
+    endpoint: "/v1/chat/completions",
+    completionWindow: "24h"
+)
+
+// List
+let batches = try await client.batches.list()
+
+// Retrieve
+let status = try await client.batches.retrieve(batch.id)
+
+// Cancel
+let cancelled = try await client.batches.cancel(batch.id)
+```
+
+### Vector Stores
+
+```swift
+// Create
+let store = try await client.vectorStores.create(
+    name: "My Knowledge Base",
+    fileIds: ["file-abc123"]
+)
+
+// List / Retrieve / Update / Delete
+let stores = try await client.vectorStores.list()
+let retrieved = try await client.vectorStores.retrieve(store.id)
+let updated = try await client.vectorStores.update(store.id, name: "Updated Name")
+let deleted = try await client.vectorStores.delete(store.id)
+
+// Manage files in a store
+let vsFile = try await client.vectorStores.files.create(
+    vectorStoreId: store.id,
+    fileId: "file-xyz789"
+)
+let vsFiles = try await client.vectorStores.files.list(vectorStoreId: store.id)
+let deletedFile = try await client.vectorStores.files.delete(
+    vectorStoreId: store.id,
+    fileId: vsFile.id
+)
+```
+
+### Uploads
+
+```swift
+// Create an upload session
+let upload = try await client.uploads.create(
+    filename: "large-file.jsonl",
+    purpose: "fine-tune",
+    bytes: fileData.count,
+    mimeType: "application/jsonl"
+)
+
+// Upload parts
+let part1 = try await client.uploads.parts.create(
+    uploadId: upload.id,
+    data: chunk1
+)
+let part2 = try await client.uploads.parts.create(
+    uploadId: upload.id,
+    data: chunk2
+)
+
+// Complete the upload
+let completed = try await client.uploads.complete(
+    upload.id,
+    partIds: [part1.id, part2.id]
+)
+
+// Or cancel
+let cancelled = try await client.uploads.cancel(upload.id)
+```
+
+### Legacy Completions
+
+> **Note:** The Completions API is legacy. Use the Chat Completions or Responses API for new projects.
+
+```swift
+let completion = try await client.completions.create(
+    model: "gpt-3.5-turbo-instruct",
+    prompt: .string("Once upon a time"),
+    maxTokens: 100
+)
+print(completion.choices.first?.text ?? "")
+
+// Streaming
+let stream = try await client.completions.createStream(
+    model: "gpt-3.5-turbo-instruct",
+    prompt: .string("Once upon a time"),
+    maxTokens: 100
+)
+for try await chunk in stream {
+    print(chunk.choices.first?.text ?? "", terminator: "")
+}
 ```
 
 ---
 
 ## API Reference
 
-| Resource | Methods |
-|----------|---------|
-| `client.responses` | `create()`, `createStream()`, `retrieve()`, `delete()`, `compact()` |
-| `client.chat.completions` | `create()`, `createStream()` |
-| `client.conversations` | `create()`, `retrieve()`, `update()`, `delete()` |
-| `client.conversations.items` | `create()`, `list()`, `retrieve()`, `delete()` |
-| `client.embeddings` | `create()` |
-| `client.models` | `list()`, `retrieve()`, `delete()` |
-| `client.files` | `create()`, `retrieve()`, `list()`, `delete()`, `content()` |
-| `client.images` | `generate()`, `edit()`, `createVariation()` |
-| `client.audio.transcriptions` | `create()` |
-| `client.audio.translations` | `create()` |
-| `client.audio.speech` | `create()` |
-| `client.moderations` | `create()` |
-| `client.fineTuning.jobs` | `create()`, `retrieve()`, `list()`, `cancel()`, `listEvents()` |
-| `client.batches` | `create()`, `retrieve()`, `list()`, `cancel()` |
-| `client.vectorStores` | `create()`, `retrieve()`, `update()`, `list()`, `delete()` |
-| `client.vectorStores.files` | `create()`, `retrieve()`, `list()`, `delete()` |
-| `client.uploads` | `create()`, `cancel()`, `complete()` |
-| `client.uploads.parts` | `create()` |
-| `client.completions` | `create()` (legacy) |
+<details>
+<summary>Complete API reference table</summary>
+
+| Resource | Method | Description |
+|----------|--------|-------------|
+| **Responses** | | |
+| `client.responses` | `create(...)` | Generate a response |
+| | `createStream(...)` | Stream a response (SSE) |
+| | `retrieve(_:)` | Retrieve a stored response |
+| | `delete(_:)` | Delete a stored response |
+| | `compact(...)` | Compact conversation context |
+| | `connectWebSocket()` | Open WebSocket connection *(Darwin only)* |
+| **Chat Completions** | | |
+| `client.chat.completions` | `create(...)` | Create a chat completion |
+| | `createStream(...)` | Stream a chat completion (SSE) |
+| **Conversations** | | |
+| `client.conversations` | `create(...)` | Create a conversation |
+| | `retrieve(_:)` | Retrieve a conversation |
+| | `update(_:metadata:)` | Update a conversation |
+| | `delete(_:)` | Delete a conversation |
+| `client.conversations.items` | `create(...)` | Add items to a conversation |
+| | `list(...)` | List conversation items |
+| | `retrieve(_:conversationId:)` | Get a single item |
+| | `delete(_:conversationId:)` | Delete an item |
+| **Embeddings** | | |
+| `client.embeddings` | `create(...)` | Create embeddings |
+| **Models** | | |
+| `client.models` | `list()` | List available models |
+| | `retrieve(_:)` | Retrieve model info |
+| | `delete(_:)` | Delete a fine-tuned model |
+| **Files** | | |
+| `client.files` | `create(...)` | Upload a file |
+| | `retrieve(_:)` | Get file metadata |
+| | `list(...)` | List files |
+| | `delete(_:)` | Delete a file |
+| | `content(_:)` | Download file content |
+| **Images** | | |
+| `client.images` | `generate(...)` | Generate images from text |
+| | `edit(...)` | Edit an image |
+| | `createVariation(...)` | Create image variations |
+| **Audio** | | |
+| `client.audio.transcriptions` | `create(...)` | Transcribe audio to text |
+| `client.audio.translations` | `create(...)` | Translate audio to English |
+| `client.audio.speech` | `create(...)` | Generate speech from text |
+| **Moderations** | | |
+| `client.moderations` | `create(...)` | Classify text for policy compliance |
+| **Fine-tuning** | | |
+| `client.fineTuning.jobs` | `create(...)` | Create a fine-tuning job |
+| | `retrieve(_:)` | Get job status |
+| | `list(...)` | List jobs |
+| | `cancel(_:)` | Cancel a job |
+| | `listEvents(_:...)` | List job events |
+| | `listCheckpoints(_:...)` | List job checkpoints |
+| **Batches** | | |
+| `client.batches` | `create(...)` | Create a batch |
+| | `retrieve(_:)` | Get batch status |
+| | `list(...)` | List batches |
+| | `cancel(_:)` | Cancel a batch |
+| **Vector Stores** | | |
+| `client.vectorStores` | `create(...)` | Create a vector store |
+| | `retrieve(_:)` | Get a vector store |
+| | `update(_:...)` | Update a vector store |
+| | `list(...)` | List vector stores |
+| | `delete(_:)` | Delete a vector store |
+| `client.vectorStores.files` | `create(...)` | Add file to store |
+| | `retrieve(...)` | Get file info |
+| | `list(...)` | List files in store |
+| | `delete(...)` | Remove file from store |
+| **Uploads** | | |
+| `client.uploads` | `create(...)` | Start an upload session |
+| | `cancel(_:)` | Cancel an upload |
+| | `complete(_:partIds:...)` | Complete an upload |
+| `client.uploads.parts` | `create(...)` | Upload a part |
+| **Completions** *(legacy)* | | |
+| `client.completions` | `create(...)` | Create a completion |
+| | `createStream(...)` | Stream a completion |
+| **Realtime** *(Darwin only)* | | |
+| `client.realtime` | `connect(model:)` | Open a realtime WebSocket connection |
+
+</details>
+
+---
 
 ## Error Handling
 
-All API methods throw `OpenAIError`:
+All errors are thrown as `OpenAIError`:
 
 ```swift
+import SwiftOpenAI
+
 do {
     let response = try await client.responses.create(
-        model: "gpt-4.1", input: .text("Hello")
+        model: "gpt-4.1",
+        input: .text("Hello!")
     )
 } catch let error as OpenAIError {
     switch error {
-    case .authenticationError(let msg):
-        print("Auth failed: \(msg)")
-    case .rateLimitError(let msg):
-        print("Rate limited: \(msg)")
-    case .apiError(let code, let msg, _, _):
-        print("API error \(code): \(msg)")
-    case .notFoundError(let msg):
-        print("Not found: \(msg)")
-    default:
-        print("Error: \(error)")
+    case .authenticationError(let message):
+        print("Authentication failed (401): \(message)")
+    case .permissionDeniedError(let message):
+        print("Permission denied (403): \(message)")
+    case .notFoundError(let message):
+        print("Not found (404): \(message)")
+    case .conflictError(let message):
+        print("Conflict (409): \(message)")
+    case .unprocessableEntityError(let message):
+        print("Unprocessable (422): \(message)")
+    case .rateLimitError(let message):
+        print("Rate limited (429): \(message)")
+    case .internalServerError(let message):
+        print("Server error (500+): \(message)")
+    case .apiError(let statusCode, let message, let type, let code):
+        print("API error \(statusCode): \(message) [type: \(type ?? ""), code: \(code ?? "")]")
+    case .connectionError(let message):
+        print("Connection error: \(message)")
+    case .decodingError(let message):
+        print("Decoding error: \(message)")
+    case .timeout:
+        print("Request timed out")
+    case .bufferOverflow(let message):
+        print("Buffer overflow: \(message)")
     }
 }
 ```
 
-## Configuration
+---
+
+## Retry & Resilience
+
+The SDK automatically retries failed requests with exponential backoff and jitter.
+
+### How It Works
+
+- **Retried status codes**: `429` (rate limit) and `5xx` (server errors)
+- **Backoff formula**: `min(baseDelay × 2^attempt + jitter, 8s)` — matches the Python SDK
+- **Jitter**: Random value in `0…0.25s` to prevent thundering herd
+- **Retry-After header**: Respected when present (capped at 120 seconds)
+- **Network errors**: Not retried — `URLError` is immediately mapped to `OpenAIError.connectionError`
+
+### Configuration
 
 ```swift
 let client = OpenAI(
     apiKey: "sk-...",
-    organization: "org-...",       // Optional
-    project: "proj-...",           // Optional
-    baseURL: URL(string: "https://your-endpoint.com/v1")!,
-    timeoutInterval: 300           // Seconds (default: 600)
+    maxRetries: 3,     // Retry up to 3 times (set 0 to disable)
+    retryDelay: 1.0    // Start with 1s base delay
 )
+// Retry delays: 1s → 2s → 4s (capped at 8s)
 ```
+
+---
+
+## Security
+
+SwiftOpenAI is designed with security as a priority:
+
+| Protection | Details |
+|-----------|---------|
+| **Zero dependencies** | No third-party code in the dependency chain |
+| **TLS 1.2+ enforcement** | `tlsMinimumSupportedProtocolVersion = .TLSv12` on Darwin |
+| **No API key logging** | API keys are never included in error messages or logs |
+| **Header injection prevention** | Organization and project headers are sanitized (CR/LF stripped) |
+| **Path traversal prevention** | All path components validated — rejects empty, `/`, `\`, `..` |
+| **Cookies disabled** | `httpCookieAcceptPolicy = .never` |
+| **Cache disabled** | `urlCache = nil` — no sensitive data stored to disk |
+| **Buffer size limits** | 10 MB safety limit on SSE streams, WebSocket frames, and error response bodies |
+
+---
+
+## Performance
+
+| Optimization | Details |
+|-------------|---------|
+| **Cached URL construction** | Endpoint URLs built once and reused |
+| **Pre-built headers** | Common headers cached on the HTTP client |
+| **Line-based SSE parsing** | Uses `AsyncLineSequence` on Darwin — avoids per-byte async overhead (100–300x faster) |
+| **Explicit CodingKeys** | Faster JSON encoding/decoding than synthesized keys |
+| **ContiguousArray multipart** | `ContiguousArray<UInt8>` for efficient multipart body assembly |
+| **Connection pre-warming** | `warmConnection()` pre-establishes TCP/TLS for faster first request |
+| **HTTP pipelining** | `httpShouldUsePipelining = true` with up to 8 connections per host |
+
+---
+
+## Platform Support
+
+| Platform | Minimum Version | Notes |
+|----------|----------------|-------|
+| iOS | 16.0+ | Full support |
+| macOS | 13.0+ | Full support |
+| tvOS | 16.0+ | Full support |
+| watchOS | 9.0+ | Full support |
+| visionOS | 1.0+ | Full support |
+| Linux | Swift 6.0+ | Via `FoundationNetworking` |
+
+> **Note:** WebSocket mode (`connectWebSocket()`) and the Realtime API (`client.realtime`) are **Darwin only** — they require `URLSessionWebSocketTask` which is unavailable on Linux.
+
+> **Note:** On Linux, streaming uses a buffered `Data` fallback since `URLSession.AsyncBytes` is unavailable in swift-corelibs-foundation. Import `FoundationNetworking` alongside `Foundation` in your Linux targets.
+
+---
 
 ## Examples
 
-The [`Examples/`](Examples/) directory contains copy-paste-ready code:
+The [`Examples/`](Examples/) directory contains copy-paste-ready usage examples:
 
-| File | What's Inside |
-|------|---------------|
-| [`BasicUsage.swift`](Examples/BasicUsage.swift) | Models, Embeddings, Moderations, Images, Error handling |
-| [`ChatExamples.swift`](Examples/ChatExamples.swift) | Chat, multi-turn, streaming, tool calling, JSON mode |
-| [`ResponsesExamples.swift`](Examples/ResponsesExamples.swift) | Responses API, streaming, conversations, tools |
-| [`AdvancedExamples.swift`](Examples/AdvancedExamples.swift) | Audio, Fine-tuning, Batches, Vector Stores, Uploads |
+| File | Topics |
+|------|--------|
+| [`BasicUsage.swift`](Examples/BasicUsage.swift) | Models, Embeddings, Moderations, Images, error handling |
+| [`ChatExamples.swift`](Examples/ChatExamples.swift) | Chat completions, multi-turn, streaming, tool calling, JSON mode, structured output |
+| [`ResponsesExamples.swift`](Examples/ResponsesExamples.swift) | Responses API, `previousResponseId` chaining, streaming, Conversations API |
+| [`AdvancedExamples.swift`](Examples/AdvancedExamples.swift) | Audio, fine-tuning, batches, vector stores, chunked uploads, custom configuration |
 
-## Project Status
+---
 
-| Feature | Status |
-|---------|--------|
-| Responses API (text, streaming, tools, structured outputs, compaction) | ✅ |
-| Chat Completions (standard + streaming + tools) | ✅ |
-| Conversations API (CRUD + items) | ✅ |
-| Function calling (Responses + Chat) | ✅ |
-| Structured outputs (JSON Schema) | ✅ |
-| Embeddings, Images, Audio, Files, Models, Moderations | ✅ |
-| Fine-tuning, Batches, Vector Stores, Uploads | ✅ |
-| WebSocket Mode | ✅ |
+## Testing
+
+SwiftOpenAI includes **141 tests** using the [Swift Testing](https://developer.apple.com/documentation/testing/) framework.
+
+```bash
+swift test
+```
+
+- All tests mock HTTP responses via `MockURLProtocol` — no real API calls
+- Tests are organized in `Tests/SwiftOpenAITests/` mirroring the `Sources/` structure
+- Uses `@Suite struct` for test suites (value semantics prevent shared state bugs)
+- All tests use `async throws` to match the SDK's async design
+
+---
 
 ## CI/CD
 
-- **CI** — Every push/PR runs `swift build && swift test` on macOS 15 and Linux (Swift 6.0)
-- **Release** — Tag with `v*` (e.g. `git tag v0.2.0 && git push --tags`) to auto-create a GitHub Release
+### CI Workflow
+
+Runs on every push and pull request to `main`:
+
+- **macOS** — macOS 15, Swift 6.0: `swift build` + `swift test`
+- **Linux** — Ubuntu (latest), Swift 6.0 container: `swift build` + `swift test`
+- SPM build cache enabled for faster runs
+
+### Release Workflow
+
+Triggered by `v*` tag pushes (e.g., `v0.6.1`):
+
+- Validates build on macOS and Linux in parallel
+- Creates a GitHub Release with auto-generated release notes
+- Pre-release detected automatically for tags containing `-` (e.g., `v1.0.0-beta`)
+
+---
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, coding standards, and contribution guidelines.
+
+---
 
 ## License
 
-MIT — See [LICENSE](LICENSE) for details.
+SwiftOpenAI is released under the [MIT License](LICENSE).
