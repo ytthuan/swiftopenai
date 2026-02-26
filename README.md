@@ -127,9 +127,11 @@ client.shutdown()
 
 ### Azure OpenAI
 
-SwiftOpenAI supports both Azure OpenAI v1 GA API and Azure AI Foundry project endpoints.
+SwiftOpenAI supports Azure OpenAI with two deployment options:
 
-**Azure OpenAI v1 GA API** — uses API key authentication:
+#### Option 1: Azure OpenAI Compatibility Endpoint (API Key)
+
+Uses the resource-level v1 GA endpoint with API key authentication. Supports Chat Completions, Responses, Embeddings, Images, Audio, and other standard OpenAI APIs. **Does not support the Conversations API** (use Option 2 for conversations).
 
 ```swift
 let client = OpenAI.azure(
@@ -137,43 +139,155 @@ let client = OpenAI.azure(
     apiKey: "your-azure-api-key"
 )
 
-let response = try await client.chat.completions.create(
+// Chat Completions
+let chatResponse = try await client.chat.completions.create(
     model: "gpt-4.1",
     messages: [.user(content: .text("Hello!"))]
 )
+
+// Responses API (multi-turn via previousResponseId)
+let response = try await client.responses.create(
+    model: "gpt-4.1",
+    input: .text("Hello!")
+)
+let followUp = try await client.responses.create(
+    model: "gpt-4.1",
+    input: .text("Tell me more"),
+    previousResponseId: response.id
+)
+
+// Streaming
+let stream = try await client.responses.createStream(
+    model: "gpt-4.1",
+    input: .text("Write a poem about Swift")
+)
+for try await event in stream {
+    if let delta = event.delta {
+        print(delta, terminator: "")
+    }
+}
 ```
 
-**Azure AI Foundry** — uses Entra ID (OAuth 2.0 client credentials) for full API access including Conversations:
+The endpoint URL follows the pattern: `https://{resource}.openai.azure.com/openai/v1`
+
+#### Option 2: Azure AI Foundry Project Endpoint (Entra ID)
+
+Uses the Foundry project endpoint with Azure Entra ID (OAuth 2.0 client credentials) authentication. **Supports ALL OpenAI APIs including the Conversations API** — the only way to use server-managed conversations on Azure.
+
+**Prerequisites:**
+1. An Azure AI Foundry project with a deployed model
+2. An Azure Entra ID app registration with:
+   - **Client ID** and **Client Secret** from the app registration
+   - **Tenant ID** from your Azure AD directory
+   - The **Azure AI Developer** role assigned to the app registration on the Foundry resource/project
 
 ```swift
 let client = OpenAI.azureFoundry(
     endpoint: "https://myresource.services.ai.azure.com/api/projects/myproject",
     tenantId: "your-tenant-id",
-    clientId: "your-client-id",          // From app registration
-    clientSecret: "your-client-secret"   // From app registration
-)
-
-// All APIs work: conversations, responses, chat, embeddings, etc.
-let conv = try await client.conversations.create()
-let response = try await client.responses.create(
-    model: "gpt-4.1",
-    input: .text("Hello!"),
-    conversation: conv.id
+    clientId: "your-client-id",
+    clientSecret: "your-client-secret"
 )
 ```
 
-Tokens are automatically obtained and cached (~1 hour lifetime, refreshed 5 min before expiry).
+The SDK automatically:
+- Obtains Entra ID tokens via OAuth 2.0 client credentials flow
+- Caches tokens (~1 hour lifetime)
+- Refreshes tokens 5 minutes before expiry
+- Appends `api-version=2025-11-15-preview` to every request
 
-For pre-obtained tokens (e.g., from `az account get-access-token`):
+**Conversations + Responses (multi-turn with server state):**
+
+```swift
+// Create a conversation — server manages the context
+let conv = try await client.conversations.create()
+
+// First turn — streamed
+let stream1 = try await client.responses.createStream(
+    model: "gpt-4.1",
+    input: .text("I'm learning Swift concurrency."),
+    conversation: conv.id
+)
+for try await event in stream1 {
+    if let delta = event.delta { print(delta, terminator: "") }
+}
+print()
+
+// Second turn — context is preserved by the server
+let stream2 = try await client.responses.createStream(
+    model: "gpt-4.1",
+    input: .text("What should I learn first?"),
+    conversation: conv.id
+)
+for try await event in stream2 {
+    if let delta = event.delta { print(delta, terminator: "") }
+}
+```
+
+**Manage conversation items:**
+
+```swift
+// List items in the conversation
+let items = try await client.conversations.items.list(conversationId: conv.id)
+for item in items.data {
+    print("\(item.role ?? ""): \(item.content?.first?.text ?? "")")
+}
+
+// Add items to a conversation
+try await client.conversations.items.create(
+    conversationId: conv.id,
+    items: [.system(content: "You are a Swift expert")]
+)
+
+// Conversation lifecycle
+let retrieved = try await client.conversations.retrieve(conv.id)
+let updated = try await client.conversations.update(conv.id, metadata: ["topic": "swift"])
+let deleted = try await client.conversations.delete(conv.id)
+```
+
+**Pre-obtained token (e.g., from `az account get-access-token`):**
 
 ```swift
 let client = OpenAI.azureFoundry(
     endpoint: "https://myresource.services.ai.azure.com/api/projects/myproject",
-    token: "eyJ0eXAi..."
+    token: "eyJ0eXAi..."  // Note: will NOT auto-refresh
 )
 ```
 
-> **Note:** Azure AI Foundry requires the app registration to have the **Azure AI Developer** role on the resource/project.
+**Custom API version:**
+
+```swift
+let client = OpenAI.azureFoundry(
+    endpoint: "https://myresource.services.ai.azure.com/api/projects/myproject",
+    tenantId: "...", clientId: "...", clientSecret: "...",
+    apiVersion: "2024-10-21"  // Default: 2025-11-15-preview
+)
+```
+
+#### Azure Feature Comparison
+
+| Feature | Option 1 (API Key) | Option 2 (Foundry + Entra ID) |
+|---------|:------------------:|:-----------------------------:|
+| Chat Completions | ✅ | ✅ |
+| Responses API | ✅ | ✅ |
+| Streaming | ✅ | ✅ |
+| Embeddings | ✅ | ✅ |
+| Images / Audio | ✅ | ✅ |
+| **Conversations API** | ❌ | ✅ |
+| Token auto-refresh | N/A | ✅ |
+| API key auth | ✅ | ❌ (Entra ID) |
+| Multi-turn (chaining) | `previousResponseId` | `conversation` param |
+
+#### Interactive Chat Console
+
+The ExampleApp includes an interactive streaming chat console:
+
+```bash
+cd ExampleApp
+swift run ExampleApp chat
+```
+
+Select backend 1 (API key) or 2 (Azure Foundry), then chat with streaming responses. Supports `/new`, `/system`, `/model`, `/info`, and `/quit` commands.
 
 ---
 

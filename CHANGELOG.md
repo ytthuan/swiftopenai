@@ -17,8 +17,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `OpenAI.azureFoundry(endpoint:token:)` factory for pre-obtained token auth
 - `Configuration.defaultQueryItems` — query items appended to every request (used for `api-version`)
 - `Configuration.apiKeyHeaderName` — custom API key header name (e.g., `"api-key"` for Azure)
+- Interactive streaming chat console in ExampleApp (`swift run ExampleApp chat`) — supports both API key and Foundry backends with auto-detection of Conversations API availability
 - 19 new unit tests for Azure configuration, initializers, token provider, and query merge
 - Azure Foundry live tests in ExampleApp (token auth, conversations CRUD, responses with conversation)
+
+### Changed
+- Comprehensive Azure documentation in README with feature comparison table, Entra ID setup guide, and Conversations API usage with Foundry project endpoints
 
 ### Fixed
 - `EntraIDTokenProvider.percentEncode()` now uses RFC 3986 unreserved character set for form-urlencoded body encoding — prevents silent credential corruption when client secrets contain `&`, `=`, or `+`
