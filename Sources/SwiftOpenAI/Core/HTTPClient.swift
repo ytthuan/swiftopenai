@@ -48,11 +48,17 @@ struct HTTPClient: Sendable {
 
         // Pre-build common headers (computed once, applied per-request)
         var headers: [(field: String, value: String)] = [
-            ("Authorization", "Bearer \(configuration.apiKey)"),
             ("Accept-Encoding", "gzip, deflate"),
             ("Connection", "keep-alive"),
             ("User-Agent", SDK.userAgent),
         ]
+        if configuration.tokenProvider == nil {
+            if let headerName = configuration.apiKeyHeaderName {
+                headers.insert((headerName, configuration.apiKey), at: 0)
+            } else {
+                headers.insert(("Authorization", "Bearer \(configuration.apiKey)"), at: 0)
+            }
+        }
         if let org = configuration.organization {
             headers.append(("OpenAI-Organization", Self.sanitizeHeaderValue(org)))
         }
@@ -87,8 +93,9 @@ struct HTTPClient: Sendable {
     ) throws -> URLRequest {
         var components = baseComponents
         components.path = basePath + path
-        if let queryItems, !queryItems.isEmpty {
-            components.queryItems = queryItems
+        let allQueryItems = configuration.defaultQueryItems + (queryItems ?? [])
+        if !allQueryItems.isEmpty {
+            components.queryItems = allQueryItems
         }
 
         guard let url = components.url else {
@@ -121,6 +128,10 @@ struct HTTPClient: Sendable {
     ) throws -> URLRequest {
         var components = baseComponents
         components.path = basePath + path
+        let allQueryItems = configuration.defaultQueryItems
+        if !allQueryItems.isEmpty {
+            components.queryItems = allQueryItems
+        }
 
         guard let url = components.url else {
             throw URLError(.badURL)
@@ -149,6 +160,15 @@ struct HTTPClient: Sendable {
 
     // MARK: - Request Execution
 
+    /// Adds authorization header from token provider if configured.
+    private func authorizedRequest(_ request: URLRequest) async throws -> URLRequest {
+        guard let provider = configuration.tokenProvider else { return request }
+        var req = request
+        let token = try await provider.getToken()
+        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        return req
+    }
+
     /// Performs a request and decodes the JSON response.
     func perform<T: Decodable & Sendable>(request: URLRequest) async throws -> T {
         let (data, response) = try await performWithRetry(request: request) { req in
@@ -170,10 +190,19 @@ struct HTTPClient: Sendable {
     /// Performs a request with automatic retry for transient errors (429, 5xx).
     private func performWithRetry(request: URLRequest, operation: (URLRequest) async throws -> (Data, URLResponse)) async throws -> (Data, URLResponse) {
         let maxRetries = configuration.maxRetries
+        let authorizedReq = try await authorizedRequest(request)
         for attempt in 0...maxRetries {
+            let currentReq: URLRequest
+            if attempt == 0 {
+                currentReq = authorizedReq
+            } else if configuration.tokenProvider != nil {
+                currentReq = try await authorizedRequest(request)
+            } else {
+                currentReq = authorizedReq
+            }
             let (data, response): (Data, URLResponse)
             do {
-                (data, response) = try await operation(request)
+                (data, response) = try await operation(currentReq)
             } catch let error as URLError {
                 // Connection errors are not retryable
                 throw mapURLError(error)
@@ -220,9 +249,10 @@ struct HTTPClient: Sendable {
         // Linux: URLSession.AsyncBytes is unavailable in swift-corelibs-foundation.
         // Buffer the full response, then yield bytes. True incremental streaming
         // can be added via URLSessionDataDelegate in a future release.
+        let authorizedReq = try await authorizedRequest(request)
         let (data, response): (Data, URLResponse)
         do {
-            (data, response) = try await session.data(for: request)
+            (data, response) = try await session.data(for: authorizedReq)
         } catch let error as URLError {
             throw mapURLError(error)
         }
@@ -236,9 +266,10 @@ struct HTTPClient: Sendable {
         return ServerSentEventsStream<T>(byteStream: byteStream, decoder: Self.decoder)
         #else
         // Apple platforms: true incremental streaming via URLSession.AsyncBytes.
+        let authorizedReq = try await authorizedRequest(request)
         let (bytes, response): (URLSession.AsyncBytes, URLResponse)
         do {
-            (bytes, response) = try await session.bytes(for: request)
+            (bytes, response) = try await session.bytes(for: authorizedReq)
         } catch let error as URLError {
             throw mapURLError(error)
         }

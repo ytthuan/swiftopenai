@@ -24,6 +24,17 @@ public struct Configuration: Sendable {
     /// Base delay for exponential backoff in seconds. Default is 0.5.
     public let retryDelay: TimeInterval
 
+    /// Default query items appended to every request URL.
+    public let defaultQueryItems: [URLQueryItem]
+
+    /// Optional token provider for dynamic authentication (e.g., Azure Entra ID).
+    public let tokenProvider: (any TokenProvider)?
+
+    /// Custom header name for API key authentication.
+    /// When set (e.g., `"api-key"` for Azure), sends the raw key in this header
+    /// instead of `Authorization: Bearer <key>`. Default is `nil` (uses Bearer).
+    public let apiKeyHeaderName: String?
+
     public init(
         apiKey: String,
         organization: String? = nil,
@@ -31,9 +42,12 @@ public struct Configuration: Sendable {
         baseURL: URL = URL(string: "https://api.openai.com/v1")!,
         timeoutInterval: TimeInterval = 600,
         maxRetries: Int = 2,
-        retryDelay: TimeInterval = 0.5
+        retryDelay: TimeInterval = 0.5,
+        defaultQueryItems: [URLQueryItem] = [],
+        tokenProvider: (any TokenProvider)? = nil,
+        apiKeyHeaderName: String? = nil
     ) {
-        precondition(!apiKey.isEmpty, "SwiftOpenAI: API key must not be empty")
+        precondition(tokenProvider != nil || !apiKey.isEmpty, "SwiftOpenAI: API key must not be empty when no token provider is set")
         precondition(maxRetries >= 0, "SwiftOpenAI: maxRetries must be non-negative")
         precondition(retryDelay >= 0, "SwiftOpenAI: retryDelay must be non-negative")
         Self.validateSecureURL(baseURL)
@@ -44,6 +58,9 @@ public struct Configuration: Sendable {
         self.timeoutInterval = timeoutInterval
         self.maxRetries = maxRetries
         self.retryDelay = retryDelay
+        self.defaultQueryItems = defaultQueryItems
+        self.tokenProvider = tokenProvider
+        self.apiKeyHeaderName = apiKeyHeaderName
     }
 
     /// Validates that the base URL uses a secure scheme.

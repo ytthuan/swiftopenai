@@ -81,6 +81,9 @@ public final class OpenAI: Sendable {
     ///   - timeoutInterval: Request timeout in seconds (default: 600).
     ///   - maxRetries: Maximum number of retries for failed requests (default: 2).
     ///   - retryDelay: Base delay for exponential backoff in seconds (default: 0.5).
+    ///   - defaultQueryItems: Query items appended to every request URL.
+    ///   - tokenProvider: Optional token provider for dynamic authentication (e.g., Azure Entra ID).
+    ///   - apiKeyHeaderName: Custom header name for API key (e.g., `"api-key"` for Azure).
     ///   - session: Optional custom URLSession for testing.
     public init(
         apiKey: String,
@@ -90,6 +93,9 @@ public final class OpenAI: Sendable {
         timeoutInterval: TimeInterval = 600,
         maxRetries: Int = 2,
         retryDelay: TimeInterval = 0.5,
+        defaultQueryItems: [URLQueryItem] = [],
+        tokenProvider: (any TokenProvider)? = nil,
+        apiKeyHeaderName: String? = nil,
         session: URLSession? = nil
     ) {
         self.configuration = Configuration(
@@ -99,7 +105,10 @@ public final class OpenAI: Sendable {
             baseURL: baseURL,
             timeoutInterval: timeoutInterval,
             maxRetries: maxRetries,
-            retryDelay: retryDelay
+            retryDelay: retryDelay,
+            defaultQueryItems: defaultQueryItems,
+            tokenProvider: tokenProvider,
+            apiKeyHeaderName: apiKeyHeaderName
         )
         self.httpClient = HTTPClient(configuration: configuration, session: session)
         self.models = Models(client: httpClient)
@@ -148,6 +157,161 @@ public final class OpenAI: Sendable {
         let _: ListResponse<Model> = try await httpClient.get(
             path: "models",
             queryItems: [URLQueryItem(name: "limit", value: "1")]
+        )
+    }
+}
+
+// MARK: - Azure Convenience Initializers
+
+extension OpenAI {
+
+    /// Creates an OpenAI client configured for Azure OpenAI v1 GA API.
+    ///
+    /// Uses API key authentication with the Azure resource-level endpoint.
+    /// Works with chat completions, responses, embeddings, and other v1 GA APIs.
+    ///
+    /// Usage:
+    /// ```swift
+    /// let client = OpenAI.azure(
+    ///     resourceName: "my-resource",
+    ///     apiKey: "my-azure-api-key"
+    /// )
+    /// let response = try await client.chat.completions.create(
+    ///     model: "gpt-4.1-nano",
+    ///     messages: [.user(content: .text("Hello"))]
+    /// )
+    /// ```
+    ///
+    /// - Parameters:
+    ///   - resourceName: Your Azure OpenAI resource name.
+    ///   - apiKey: Your Azure OpenAI API key.
+    ///   - endpointSuffix: Override endpoint domain. Default: `openai.azure.com`.
+    ///   - timeoutInterval: Request timeout in seconds. Default: 600.
+    ///   - maxRetries: Maximum retries for failed requests. Default: 2.
+    ///   - session: Optional custom URLSession.
+    public static func azure(
+        resourceName: String,
+        apiKey: String,
+        endpointSuffix: String = "openai.azure.com",
+        timeoutInterval: TimeInterval = 600,
+        maxRetries: Int = 2,
+        session: URLSession? = nil
+    ) -> OpenAI {
+        let baseURL = URL(string: "https://\(resourceName).\(endpointSuffix)/openai/v1")!
+        return OpenAI(
+            apiKey: apiKey,
+            baseURL: baseURL,
+            timeoutInterval: timeoutInterval,
+            maxRetries: maxRetries,
+            apiKeyHeaderName: "api-key",
+            session: session
+        )
+    }
+
+    /// Creates an OpenAI client configured for Azure AI Foundry project endpoint
+    /// with Entra ID authentication (OAuth 2.0 client credentials).
+    ///
+    /// This is the recommended way to use Azure AI Foundry. It supports ALL OpenAI APIs
+    /// including Conversations, Responses, Chat Completions, and more.
+    ///
+    /// The token provider automatically obtains and refreshes Entra ID tokens.
+    ///
+    /// Usage:
+    /// ```swift
+    /// let client = OpenAI.azureFoundry(
+    ///     endpoint: "https://myresource.services.ai.azure.com/api/projects/myproject",
+    ///     tenantId: "your-tenant-id",
+    ///     clientId: "your-client-id",
+    ///     clientSecret: "your-client-secret"
+    /// )
+    /// let conversation = try await client.conversations.create()
+    /// let response = try await client.responses.create(
+    ///     model: "gpt-4.1-nano",
+    ///     input: .text("Hello")
+    /// )
+    /// ```
+    ///
+    /// - Parameters:
+    ///   - endpoint: Azure AI Foundry project endpoint URL
+    ///     (e.g., `https://myresource.services.ai.azure.com/api/projects/myproject`).
+    ///   - tenantId: Azure Entra ID tenant ID.
+    ///   - clientId: Application (client) ID from app registration.
+    ///   - clientSecret: Client secret from app registration.
+    ///   - apiVersion: Azure API version. Default: `2025-11-15-preview`.
+    ///   - timeoutInterval: Request timeout in seconds. Default: 600.
+    ///   - maxRetries: Maximum retries. Default: 2.
+    ///   - session: Optional custom URLSession.
+    public static func azureFoundry(
+        endpoint: String,
+        tenantId: String,
+        clientId: String,
+        clientSecret: String,
+        apiVersion: String = "2025-11-15-preview",
+        timeoutInterval: TimeInterval = 600,
+        maxRetries: Int = 2,
+        session: URLSession? = nil
+    ) -> OpenAI {
+        let cleanEndpoint = endpoint.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let baseURL = URL(string: "\(cleanEndpoint)/openai")!
+
+        let tokenProvider = EntraIDTokenProvider(
+            tenantId: tenantId,
+            clientId: clientId,
+            clientSecret: clientSecret,
+            scope: "https://ai.azure.com/.default"
+        )
+
+        return OpenAI(
+            apiKey: "",
+            baseURL: baseURL,
+            timeoutInterval: timeoutInterval,
+            maxRetries: maxRetries,
+            defaultQueryItems: [URLQueryItem(name: "api-version", value: apiVersion)],
+            tokenProvider: tokenProvider,
+            session: session
+        )
+    }
+
+    /// Creates an OpenAI client for Azure AI Foundry with a pre-obtained Entra ID token.
+    ///
+    /// Use this when you obtain tokens from an external source (e.g., CLI, backend).
+    /// Note: The token will NOT be automatically refreshed.
+    ///
+    /// Usage:
+    /// ```swift
+    /// let token = "eyJ0eXAi..." // from `az account get-access-token`
+    /// let client = OpenAI.azureFoundry(
+    ///     endpoint: "https://myresource.services.ai.azure.com/api/projects/myproject",
+    ///     token: token
+    /// )
+    /// ```
+    ///
+    /// - Parameters:
+    ///   - endpoint: Azure AI Foundry project endpoint URL.
+    ///   - token: Pre-obtained Entra ID bearer token.
+    ///   - apiVersion: Azure API version. Default: `2025-11-15-preview`.
+    ///   - timeoutInterval: Request timeout in seconds. Default: 600.
+    ///   - maxRetries: Maximum retries. Default: 2.
+    ///   - session: Optional custom URLSession.
+    public static func azureFoundry(
+        endpoint: String,
+        token: String,
+        apiVersion: String = "2025-11-15-preview",
+        timeoutInterval: TimeInterval = 600,
+        maxRetries: Int = 2,
+        session: URLSession? = nil
+    ) -> OpenAI {
+        let cleanEndpoint = endpoint.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let baseURL = URL(string: "\(cleanEndpoint)/openai")!
+
+        return OpenAI(
+            apiKey: "",
+            baseURL: baseURL,
+            timeoutInterval: timeoutInterval,
+            maxRetries: maxRetries,
+            defaultQueryItems: [URLQueryItem(name: "api-version", value: apiVersion)],
+            tokenProvider: StaticTokenProvider(token: token),
+            session: session
         )
     }
 }

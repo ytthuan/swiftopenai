@@ -125,6 +125,56 @@ Invalidate and cancel the underlying URLSession when done:
 client.shutdown()
 ```
 
+### Azure OpenAI
+
+SwiftOpenAI supports both Azure OpenAI v1 GA API and Azure AI Foundry project endpoints.
+
+**Azure OpenAI v1 GA API** — uses API key authentication:
+
+```swift
+let client = OpenAI.azure(
+    resourceName: "my-resource",       // Your Azure resource name
+    apiKey: "your-azure-api-key"
+)
+
+let response = try await client.chat.completions.create(
+    model: "gpt-4.1",
+    messages: [.user(content: .text("Hello!"))]
+)
+```
+
+**Azure AI Foundry** — uses Entra ID (OAuth 2.0 client credentials) for full API access including Conversations:
+
+```swift
+let client = OpenAI.azureFoundry(
+    endpoint: "https://myresource.services.ai.azure.com/api/projects/myproject",
+    tenantId: "your-tenant-id",
+    clientId: "your-client-id",          // From app registration
+    clientSecret: "your-client-secret"   // From app registration
+)
+
+// All APIs work: conversations, responses, chat, embeddings, etc.
+let conv = try await client.conversations.create()
+let response = try await client.responses.create(
+    model: "gpt-4.1",
+    input: .text("Hello!"),
+    conversation: conv.id
+)
+```
+
+Tokens are automatically obtained and cached (~1 hour lifetime, refreshed 5 min before expiry).
+
+For pre-obtained tokens (e.g., from `az account get-access-token`):
+
+```swift
+let client = OpenAI.azureFoundry(
+    endpoint: "https://myresource.services.ai.azure.com/api/projects/myproject",
+    token: "eyJ0eXAi..."
+)
+```
+
+> **Note:** Azure AI Foundry requires the app registration to have the **Azure AI Developer** role on the resource/project.
+
 ---
 
 ## Responses API

@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] — 2026-02-26
+
+### Added
+- **Azure AI Foundry support** — `OpenAI.azureFoundry()` factory methods for Azure AI Foundry project endpoints with Entra ID (OAuth 2.0 client credentials) authentication
+- `TokenProvider` protocol for dynamic authentication with automatic token refresh
+- `EntraIDTokenProvider` actor — obtains and caches Azure Entra ID tokens via OAuth 2.0 client credentials flow (~1 hour lifetime, auto-refreshes 5 min before expiry)
+- `StaticTokenProvider` — for pre-obtained tokens from external sources (CLI, backend)
+- `OpenAI.azure(resourceName:apiKey:)` factory for Azure OpenAI v1 GA API with `api-key` header auth
+- `OpenAI.azureFoundry(endpoint:tenantId:clientId:clientSecret:)` factory for full Entra ID auth
+- `OpenAI.azureFoundry(endpoint:token:)` factory for pre-obtained token auth
+- `Configuration.defaultQueryItems` — query items appended to every request (used for `api-version`)
+- `Configuration.apiKeyHeaderName` — custom API key header name (e.g., `"api-key"` for Azure)
+- 19 new unit tests for Azure configuration, initializers, token provider, and query merge
+- Azure Foundry live tests in ExampleApp (token auth, conversations CRUD, responses with conversation)
+
+### Fixed
+- `EntraIDTokenProvider.percentEncode()` now uses RFC 3986 unreserved character set for form-urlencoded body encoding — prevents silent credential corruption when client secrets contain `&`, `=`, or `+`
+
 ## [0.6.1] — 2026-02-25
 
 ### Fixed
