@@ -35,7 +35,7 @@ Add SwiftOpenAI to your `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/ytthuan/swiftopenai.git", from: "0.6.0")
+    .package(url: "https://github.com/ytthuan/swiftopenai.git", from: "0.8.0")
 ]
 ```
 
@@ -1694,7 +1694,7 @@ Runs on every push and pull request to `main`:
 
 ### Release Workflow
 
-Triggered by `v*` tag pushes (e.g., `v0.6.1`):
+Triggered by `v*` tag pushes (e.g., `v0.8.0`):
 
 - Validates build on macOS and Linux in parallel
 - Creates a GitHub Release with auto-generated release notes
