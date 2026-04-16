@@ -12,7 +12,7 @@ import Foundation
 /// Usage:
 /// ```swift
 /// let ws = client.responses.connectWebSocket()
-/// await ws.connect()
+/// try await ws.connect()
 ///
 /// // First turn
 /// let stream1 = try await ws.create(
@@ -357,7 +357,10 @@ public actor ResponsesWebSocket {
         } catch {
             throw OpenAIError.apiError(statusCode: 0, message: "Encoding failed: \(error)", type: nil, code: nil)
         }
-        try await client.send(.data(data))
+        guard let text = String(data: data, encoding: .utf8) else {
+            throw OpenAIError.apiError(statusCode: 0, message: "Encoding produced non-UTF8 data", type: nil, code: nil)
+        }
+        try await client.send(.string(text))
     }
 }
 

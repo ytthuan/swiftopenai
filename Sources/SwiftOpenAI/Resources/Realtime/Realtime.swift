@@ -180,7 +180,10 @@ public actor RealtimeConnection {
             throw OpenAIError.connectionError(message: "Not connected to Realtime API")
         }
         let data = try encoder.encode(event)
-        try await task.send(.data(data))
+        guard let text = String(data: data, encoding: .utf8) else {
+            throw OpenAIError.apiError(statusCode: 0, message: "Encoding produced non-UTF8 data", type: nil, code: nil)
+        }
+        try await task.send(.string(text))
     }
     
     /// Updates the session configuration.

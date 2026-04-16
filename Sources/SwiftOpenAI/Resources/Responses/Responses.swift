@@ -226,7 +226,7 @@ public struct Responses: Sendable {
     /// Usage:
     /// ```swift
     /// let ws = client.responses.connectWebSocket()
-    /// await ws.connect()
+    /// try await ws.connect()
     /// let stream = try await ws.create(model: "gpt-5.2", input: .text("Hello"), store: false)
     /// ```
     ///
