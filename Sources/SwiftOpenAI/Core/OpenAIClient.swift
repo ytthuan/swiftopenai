@@ -84,6 +84,7 @@ public final class OpenAI: Sendable {
     ///   - defaultQueryItems: Query items appended to every request URL.
     ///   - tokenProvider: Optional token provider for dynamic authentication (e.g., Azure Entra ID).
     ///   - apiKeyHeaderName: Custom header name for API key (e.g., `"api-key"` for Azure).
+    ///   - allowInsecureRequests: Allow `http`/`ws` for local/LAN hosts (default: false).
     ///   - session: Optional custom URLSession for testing.
     public init(
         apiKey: String,
@@ -96,6 +97,7 @@ public final class OpenAI: Sendable {
         defaultQueryItems: [URLQueryItem] = [],
         tokenProvider: (any TokenProvider)? = nil,
         apiKeyHeaderName: String? = nil,
+        allowInsecureRequests: Bool = false,
         session: URLSession? = nil
     ) {
         self.configuration = Configuration(
@@ -108,7 +110,8 @@ public final class OpenAI: Sendable {
             retryDelay: retryDelay,
             defaultQueryItems: defaultQueryItems,
             tokenProvider: tokenProvider,
-            apiKeyHeaderName: apiKeyHeaderName
+            apiKeyHeaderName: apiKeyHeaderName,
+            allowInsecureRequests: allowInsecureRequests
         )
         self.httpClient = HTTPClient(configuration: configuration, session: session)
         self.models = Models(client: httpClient)

@@ -342,10 +342,13 @@ func customConfiguration() async throws {
         timeoutInterval: 300
     )
 
-    // Proxy / self-hosted compatible endpoint
+    // Local / self-hosted compatible endpoint (e.g., Ollama, vLLM, LiteLLM).
+    // Pass allowInsecureRequests: true to permit plain HTTP to local/LAN hosts.
+    // This flag only works for localhost, 127.0.0.1, ::1, .local, and RFC 1918 addresses.
     let proxyClient = OpenAI(
         apiKey: "proxy-key",
         baseURL: URL(string: "http://localhost:8080/v1")!,
+        allowInsecureRequests: true,
         timeoutInterval: 60
     )
 

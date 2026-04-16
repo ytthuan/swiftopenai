@@ -35,6 +35,20 @@ public struct Configuration: Sendable {
     /// instead of `Authorization: Bearer <key>`. Default is `nil` (uses Bearer).
     public let apiKeyHeaderName: String?
 
+    /// Whether to allow insecure `http` / `ws` connections.
+    ///
+    /// When `true`, the client permits plain-text HTTP and WebSocket connections
+    /// **only** to local and LAN hosts (localhost, 127.0.0.1, ::1, `.local`
+    /// hostnames, and RFC 1918 private IPv4 ranges). Insecure connections to
+    /// public hosts are always rejected regardless of this setting.
+    ///
+    /// Default is `false` — only `https` and `wss` are allowed.
+    ///
+    /// - Important: On Apple platforms you must also add an App Transport Security
+    ///   exception in your `Info.plist` for the target host, or ATS will block the
+    ///   connection at the OS level.
+    public let allowInsecureRequests: Bool
+
     public init(
         apiKey: String,
         organization: String? = nil,
@@ -45,12 +59,13 @@ public struct Configuration: Sendable {
         retryDelay: TimeInterval = 0.5,
         defaultQueryItems: [URLQueryItem] = [],
         tokenProvider: (any TokenProvider)? = nil,
-        apiKeyHeaderName: String? = nil
+        apiKeyHeaderName: String? = nil,
+        allowInsecureRequests: Bool = false
     ) {
         precondition(tokenProvider != nil || !apiKey.isEmpty, "SwiftOpenAI: API key must not be empty when no token provider is set")
         precondition(maxRetries >= 0, "SwiftOpenAI: maxRetries must be non-negative")
         precondition(retryDelay >= 0, "SwiftOpenAI: retryDelay must be non-negative")
-        Self.validateSecureURL(baseURL)
+        Self.validateURL(baseURL, allowInsecure: allowInsecureRequests)
         self.apiKey = apiKey
         self.organization = organization
         self.project = project
@@ -61,14 +76,58 @@ public struct Configuration: Sendable {
         self.defaultQueryItems = defaultQueryItems
         self.tokenProvider = tokenProvider
         self.apiKeyHeaderName = apiKeyHeaderName
+        self.allowInsecureRequests = allowInsecureRequests
     }
 
-    /// Validates that the base URL uses a secure scheme.
-    /// Always compiled; uses `assertionFailure` so debug builds trap while release builds continue.
-    static func validateSecureURL(_ baseURL: URL) {
-        if let scheme = baseURL.scheme?.lowercased(), scheme != "https", scheme != "wss" {
-            assertionFailure("SwiftOpenAI: Base URL uses insecure scheme '\(scheme)'. Use HTTPS in production to protect API keys.")
+    // MARK: - URL Validation
+
+    /// Validates the base URL scheme, allowing insecure schemes only for local/LAN hosts.
+    ///
+    /// - `https` and `wss` are always accepted.
+    /// - `http` and `ws` are accepted only when `allowInsecure` is `true` AND the host
+    ///   is a recognised local or private-network address.
+    /// - All other combinations trigger a `preconditionFailure` in every build configuration.
+    static func validateURL(_ baseURL: URL, allowInsecure: Bool) {
+        guard let scheme = baseURL.scheme?.lowercased() else { return }
+        if scheme == "https" || scheme == "wss" { return }
+        guard scheme == "http" || scheme == "ws" else {
+            preconditionFailure("SwiftOpenAI: Base URL uses unsupported scheme '\(scheme)'.")
         }
+        guard allowInsecure else {
+            preconditionFailure(
+                "SwiftOpenAI: Base URL uses insecure scheme '\(scheme)'. "
+                + "Use HTTPS in production, or pass allowInsecureRequests: true for local development."
+            )
+        }
+        guard let host = baseURL.host?.lowercased(), isLocalOrLAN(host) else {
+            preconditionFailure(
+                "SwiftOpenAI: Insecure scheme '\(scheme)' is only allowed for local/LAN hosts. "
+                + "Host '\(baseURL.host ?? "")' appears to be a public address."
+            )
+        }
+    }
+
+    /// Returns `true` when `host` is a loopback, link-local, `.local`, or RFC 1918 address.
+    static func isLocalOrLAN(_ host: String) -> Bool {
+        // Loopback
+        if host == "localhost" || host == "127.0.0.1" || host == "::1" {
+            return true
+        }
+        // mDNS / Bonjour
+        if host.hasSuffix(".local") {
+            return true
+        }
+        // RFC 1918 private IPv4 ranges — require exact dotted-quad (4 segments, all numeric)
+        let parts = host.split(separator: ".")
+        if parts.count == 4,
+           let o0 = UInt8(parts[0]), let o1 = UInt8(parts[1]),
+           let _ = UInt8(parts[2]), let _ = UInt8(parts[3])
+        {
+            if o0 == 10 { return true }                          // 10.0.0.0/8
+            if o0 == 172, (16...31).contains(o1) { return true } // 172.16.0.0/12
+            if o0 == 192, o1 == 168 { return true }              // 192.168.0.0/16
+        }
+        return false
     }
 
 #if canImport(Darwin)

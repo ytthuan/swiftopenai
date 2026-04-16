@@ -85,6 +85,7 @@ let client = OpenAI(
     timeoutInterval: 600,                                         // Default: 600s
     maxRetries: 2,                                                // Default: 2 retries on 429/5xx
     retryDelay: 0.5,                                              // Default: 0.5s base for exponential backoff
+    allowInsecureRequests: false,                                  // Default: false (HTTPS only)
     session: nil                                                  // Optional custom URLSession
 )
 ```
@@ -98,6 +99,7 @@ let client = OpenAI(
 | `timeoutInterval` | `TimeInterval` | `600` | Request timeout in seconds |
 | `maxRetries` | `Int` | `2` | Max retry attempts on 429/5xx (set 0 to disable) |
 | `retryDelay` | `TimeInterval` | `0.5` | Base delay for exponential backoff |
+| `allowInsecureRequests` | `Bool` | `false` | Allow `http`/`ws` for local/LAN hosts |
 | `session` | `URLSession?` | `nil` | Custom URLSession (SDK creates one if nil) |
 
 ### Connection Pre-warming
@@ -1589,6 +1591,35 @@ SwiftOpenAI is designed with security as a priority:
 | **Cookies disabled** | `httpCookieAcceptPolicy = .never` |
 | **Cache disabled** | `urlCache = nil` — no sensitive data stored to disk |
 | **Buffer size limits** | 10 MB safety limit on SSE streams, WebSocket frames, and error response bodies |
+
+### Insecure Local Endpoints
+
+By default the SDK requires `https` (or `wss`) for all connections. For local
+development against self-hosted servers (Ollama, vLLM, LiteLLM, etc.) you can
+opt in to plain `http`/`ws` by setting `allowInsecureRequests: true`:
+
+```swift
+let client = OpenAI(
+    apiKey: "local",
+    baseURL: URL(string: "http://localhost:11434/v1")!,
+    allowInsecureRequests: true
+)
+```
+
+**Allowed hosts** — insecure connections are restricted to:
+
+| Scope | Examples |
+|-------|----------|
+| Loopback | `localhost`, `127.0.0.1`, `::1` |
+| mDNS / Bonjour | any hostname ending in `.local` |
+| RFC 1918 private ranges | `10.x.x.x`, `172.16-31.x.x`, `192.168.x.x` |
+
+Public hosts (e.g., `http://api.example.com`) are **always rejected**, even with
+`allowInsecureRequests: true`.
+
+> **Note:** On Apple platforms, App Transport Security (ATS) may independently
+> block plain-HTTP connections. Add an `NSAppTransportSecurity` exception in your
+> `Info.plist` for the target host during local development.
 
 ---
 

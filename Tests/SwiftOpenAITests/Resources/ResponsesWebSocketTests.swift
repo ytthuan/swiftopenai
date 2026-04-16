@@ -166,13 +166,16 @@ import FoundationNetworking
         #expect(wsURL.path == "/v1" || wsURL.path.hasPrefix("/v1"))
     }
 
-    @Test func httpConvertsToWs() {
-        // Configuration.validateSecureURL uses assertionFailure which traps in debug builds,
-        // so we test the websocketBaseURL conversion logic via https → wss instead.
-        let config = Configuration(apiKey: "test", baseURL: URL(string: "https://localhost:8080/v1")!)
+    @Test func httpLocalhostConvertsToWsWhenInsecureAllowed() {
+        let config = Configuration(
+            apiKey: "test",
+            baseURL: URL(string: "http://localhost:8080/v1")!,
+            allowInsecureRequests: true
+        )
         let wsURL = config.websocketBaseURL
-        #expect(wsURL.scheme == "wss")
+        #expect(wsURL.scheme == "ws")
         #expect(wsURL.host == "localhost")
+        #expect(wsURL.port == 8080)
     }
 
     @Test func customAzureBaseURLConverts() {
