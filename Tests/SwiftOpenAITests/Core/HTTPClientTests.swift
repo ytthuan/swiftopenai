@@ -284,4 +284,139 @@ extension MockAPITests {
         #expect(MockURLProtocol.requestCount == 1)
     }
 
+    // MARK: - URLError → OpenAIError Mapping (T-006)
+
+    @Test func urlErrorTimedOutThrowsTimeout() async throws {
+        MockURLProtocol.reset()
+        MockURLProtocol.mockError = URLError(.timedOut)
+        let client = makeMockClientWithRetry(maxRetries: 0)
+        do {
+            _ = try await client.models.list()
+            #expect(Bool(false), "Should have thrown")
+        } catch let error as OpenAIError {
+            #expect(error == .timeout)
+        }
+    }
+
+    @Test func urlErrorNotConnectedThrowsConnectionError() async throws {
+        MockURLProtocol.reset()
+        MockURLProtocol.mockError = URLError(.notConnectedToInternet)
+        let client = makeMockClientWithRetry(maxRetries: 0)
+        do {
+            _ = try await client.models.list()
+            #expect(Bool(false), "Should have thrown")
+        } catch let error as OpenAIError {
+            if case .connectionError = error {
+                // Expected
+            } else {
+                #expect(Bool(false), "Expected connectionError, got: \(error)")
+            }
+        }
+    }
+
+    @Test func urlErrorCannotConnectToHostThrowsConnectionError() async throws {
+        MockURLProtocol.reset()
+        MockURLProtocol.mockError = URLError(.cannotConnectToHost)
+        let client = makeMockClientWithRetry(maxRetries: 0)
+        do {
+            _ = try await client.models.list()
+            #expect(Bool(false), "Should have thrown")
+        } catch let error as OpenAIError {
+            if case .connectionError = error {
+                // Expected
+            } else {
+                #expect(Bool(false), "Expected connectionError, got: \(error)")
+            }
+        }
+    }
+
+    // MARK: - Transient URLError Retry
+
+    @Test func transientURLErrorRetriesThenSucceeds() async throws {
+        let successJson = """
+        {"object": "list", "data": []}
+        """
+        MockURLProtocol.reset()
+        MockURLProtocol.mockSequence = [
+            .error(URLError(.timedOut)),
+            .response(
+                successJson.data(using: .utf8)!,
+                HTTPURLResponse(url: URL(string: "https://api.openai.com/v1")!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+            )
+        ]
+        let client = makeMockClientWithRetry(maxRetries: 2, retryDelay: 0.001)
+        _ = try await client.models.list()
+        #expect(MockURLProtocol.requestCount == 2)
+    }
+
+    // MARK: - Retry-After Header (T-008)
+
+    @Test func retryRespectsRetryAfterNumericHeader() async throws {
+        let errorJson = """
+        {"error": {"message": "Rate limit exceeded", "type": "rate_limit_error", "param": null, "code": null}}
+        """
+        let successJson = """
+        {"object": "list", "data": []}
+        """
+        MockURLProtocol.reset()
+        MockURLProtocol.mockResponses = [
+            (errorJson.data(using: .utf8)!, HTTPURLResponse(url: URL(string: "https://api.openai.com/v1")!, statusCode: 429, httpVersion: nil, headerFields: ["Retry-After": "1"])!),
+            (successJson.data(using: .utf8)!, HTTPURLResponse(url: URL(string: "https://api.openai.com/v1")!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+        ]
+        let client = makeMockClientWithRetry(maxRetries: 2, retryDelay: 0.001)
+        let start = Date()
+        _ = try await client.models.list()
+        let elapsed = Date().timeIntervalSince(start)
+        #expect(elapsed >= 0.9, "Should have waited ~1s from Retry-After header")
+        #expect(MockURLProtocol.requestCount == 2)
+    }
+
+    // MARK: - Error Body Fallback
+
+    @Test func nonJsonErrorBodyFallsBackToRawString() async throws {
+        let rawBody = "Bad Gateway"
+        MockURLProtocol.reset()
+        MockURLProtocol.mockResponse = (
+            rawBody.data(using: .utf8)!,
+            HTTPURLResponse(url: URL(string: "https://api.openai.com/v1")!, statusCode: 502, httpVersion: nil, headerFields: nil)!
+        )
+        let client = makeMockClientWithRetry(maxRetries: 0)
+        do {
+            _ = try await client.models.list()
+            #expect(Bool(false), "Should have thrown")
+        } catch let error as OpenAIError {
+            if case .internalServerError(let message) = error {
+                #expect(message == "Bad Gateway")
+            } else {
+                #expect(Bool(false), "Expected internalServerError, got: \(error)")
+            }
+        }
+    }
+
+    // MARK: - Path Validation
+
+    @Test func validatePathComponentRejectsSlash() async throws {
+        do {
+            _ = try "foo/bar".validatePathComponent()
+            #expect(Bool(false), "Should have thrown")
+        } catch let error as OpenAIError {
+            if case .apiError(_, let message, _, _) = error {
+                #expect(message.contains("invalid"))
+            } else {
+                #expect(Bool(false), "Wrong error: \(error)")
+            }
+        }
+    }
+
+    @Test func validatePathComponentRejectsQueryChars() async throws {
+        for char in ["?", "#", "%"] {
+            do {
+                _ = try "foo\(char)bar".validatePathComponent()
+                #expect(Bool(false), "Should have thrown for \(char)")
+            } catch is OpenAIError {
+                // Expected
+            }
+        }
+    }
+
 }

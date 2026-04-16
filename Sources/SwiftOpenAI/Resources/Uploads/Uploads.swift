@@ -40,6 +40,7 @@ public struct Uploads: Sendable {
     ///
     /// - Parameter id: The ID of the upload to cancel.
     /// - Returns: The cancelled ``Upload`` object.
+    @discardableResult
     public func cancel(_ id: String) async throws -> Upload {
         let validatedID = try id.validatePathComponent()
         return try await client.post(path: "uploads/\(validatedID)/cancel", body: nil as String?)

@@ -5,12 +5,17 @@ import Foundation
 actor WebSocketClient {
 
     private let session: URLSession
-    private let request: URLRequest
+    private var request: URLRequest
     private var task: URLSessionWebSocketTask?
     private var keepaliveTask: Task<Void, Never>?
 
     init(session: URLSession, request: URLRequest) {
         self.session = session
+        self.request = request
+    }
+
+    /// Updates the stored request (e.g., to refresh auth headers before connecting).
+    func updateRequest(_ request: URLRequest) {
         self.request = request
     }
 

@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "swiftui-axiom": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "axiom-mcp"
+      ]
+    
+    }
+  }
+}

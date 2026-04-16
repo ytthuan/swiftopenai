@@ -56,6 +56,7 @@ public final class OpenAI: Sendable {
     public let batches: Batches
 
     /// Access the Completions API (legacy).
+    @available(*, deprecated, message: "Use client.chat.completions instead. See https://platform.openai.com/docs/api-reference/completions")
     public let completions: Completions
 
     /// Access the Uploads API.
@@ -129,7 +130,7 @@ public final class OpenAI: Sendable {
         self.completions = Completions(client: httpClient)
         self.conversations = Conversations(client: httpClient)
         #if canImport(Darwin)
-        self.realtime = Realtime(configuration: configuration)
+        self.realtime = Realtime(configuration: configuration, session: httpClient.session)
         #endif
     }
 
@@ -200,7 +201,21 @@ extension OpenAI {
         maxRetries: Int = 2,
         session: URLSession? = nil
     ) -> OpenAI {
-        let baseURL = URL(string: "https://\(resourceName).\(endpointSuffix)/openai/v1")!
+        let hostnamePattern = /^[A-Za-z0-9]([A-Za-z0-9.\-]*[A-Za-z0-9])?$/
+        precondition(resourceName.wholeMatch(of: hostnamePattern) != nil,
+                     "SwiftOpenAI: Invalid Azure resource name")
+        precondition(endpointSuffix.wholeMatch(of: hostnamePattern) != nil,
+                     "SwiftOpenAI: Invalid Azure endpoint suffix")
+
+        var components = URLComponents()
+        components.scheme = "https"
+        components.host = "\(resourceName).\(endpointSuffix)"
+        components.path = "/openai/v1"
+
+        guard let baseURL = components.url else {
+            preconditionFailure("SwiftOpenAI: Failed to construct Azure base URL")
+        }
+
         return OpenAI(
             apiKey: apiKey,
             baseURL: baseURL,

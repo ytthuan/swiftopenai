@@ -70,6 +70,7 @@ public struct Conversations: Sendable {
     ///
     /// - Parameter id: The conversation ID.
     /// - Returns: A ``ConversationDeleted`` confirmation.
+    @discardableResult
     public func delete(_ id: String) async throws -> ConversationDeleted {
         let validatedID = try id.validatePathComponent()
         return try await client.delete(path: "conversations/\(validatedID)")

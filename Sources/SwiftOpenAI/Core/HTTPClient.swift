@@ -34,6 +34,8 @@ struct HTTPClient: Sendable {
             sessionConfig.tlsMinimumSupportedProtocolVersion = .TLSv12
             #else
             sessionConfig.httpShouldSetCookies = false
+            sessionConfig.urlCache = nil
+            sessionConfig.requestCachePolicy = .reloadIgnoringLocalCacheData
             #endif
             self.session = URLSession(configuration: sessionConfig)
         }
@@ -99,7 +101,7 @@ struct HTTPClient: Sendable {
         }
 
         guard let url = components.url else {
-            throw URLError(.badURL)
+            throw OpenAIError.connectionError(message: "Invalid URL")
         }
 
         var request = URLRequest(url: url)
@@ -134,7 +136,7 @@ struct HTTPClient: Sendable {
         }
 
         guard let url = components.url else {
-            throw URLError(.badURL)
+            throw OpenAIError.connectionError(message: "Invalid URL")
         }
 
         var request = URLRequest(url: url)
@@ -175,7 +177,11 @@ struct HTTPClient: Sendable {
             try await session.data(for: req)
         }
         try validateResponse(data: data, response: response)
-        return try Self.decoder.decode(T.self, from: data)
+        do {
+            return try Self.decoder.decode(T.self, from: data)
+        } catch {
+            throw OpenAIError.decodingError(message: "\(error)")
+        }
     }
 
     /// Performs a request and returns raw `Data` (for file downloads, audio, etc.).
@@ -203,8 +209,18 @@ struct HTTPClient: Sendable {
             let (data, response): (Data, URLResponse)
             do {
                 (data, response) = try await operation(currentReq)
+            } catch is CancellationError {
+                throw CancellationError()
             } catch let error as URLError {
-                // Connection errors are not retryable
+                let transientCodes: Set<URLError.Code> = [
+                    .timedOut, .networkConnectionLost, .cannotConnectToHost,
+                    .dnsLookupFailed, .cannotFindHost
+                ]
+                if transientCodes.contains(error.code) && attempt < maxRetries {
+                    let delay = retryDelay(for: attempt, response: nil)
+                    try await Task.sleep(for: .seconds(delay))
+                    continue
+                }
                 throw mapURLError(error)
             }
 
@@ -218,22 +234,31 @@ struct HTTPClient: Sendable {
 
             if isRetryable && !isLastAttempt {
                 let delay = retryDelay(for: attempt, response: httpResponse)
-                try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                try await Task.sleep(for: .seconds(delay))
                 continue
             }
 
             return (data, response)
         }
-        // This should never be reached, but satisfy the compiler
-        fatalError("Retry loop exited unexpectedly")
+        preconditionFailure("Unreachable")
     }
 
     /// Calculates the retry delay for a given attempt, respecting Retry-After header.
-    private func retryDelay(for attempt: Int, response: HTTPURLResponse) -> TimeInterval {
+    private func retryDelay(for attempt: Int, response: HTTPURLResponse?) -> TimeInterval {
         // Respect Retry-After header if present (capped at 120s to prevent indefinite waits)
-        if let retryAfterString = response.value(forHTTPHeaderField: "Retry-After"),
-           let retryAfter = TimeInterval(retryAfterString) {
-            return min(max(retryAfter, 0), 120)
+        if let response, let retryAfterString = response.value(forHTTPHeaderField: "Retry-After") {
+            if let retryAfter = TimeInterval(retryAfterString) {
+                return min(max(retryAfter, 0), 120)
+            }
+            // Try parsing as HTTP-date (RFC 7231)
+            let formatter = DateFormatter()
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            formatter.timeZone = TimeZone(identifier: "GMT")
+            formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss zzz"
+            if let date = formatter.date(from: retryAfterString) {
+                let delay = max(date.timeIntervalSinceNow, 0)
+                return min(delay, 120)
+            }
         }
         // Exponential backoff with jitter (capped at 8s matching Python SDK MAX_RETRY_DELAY)
         let baseDelay = configuration.retryDelay * pow(2.0, Double(attempt))
@@ -361,8 +386,8 @@ struct HTTPClient: Sendable {
     }
 
     private func parseAPIError(data: Data, statusCode: Int) throws -> OpenAIError {
-        let body = try? Self.decoder.decode(APIErrorBody.self, from: data)
-        let message = body?.error.message ?? "Unknown error"
+        let parsed = try? Self.decoder.decode(APIErrorBody.self, from: data)
+        let message = parsed?.error.message ?? String(data: data, encoding: .utf8) ?? "Unknown error"
 
         switch statusCode {
         case 401:
@@ -380,7 +405,7 @@ struct HTTPClient: Sendable {
         case 500...:
             return .internalServerError(message: message)
         default:
-            return .apiError(statusCode: statusCode, message: message, type: body?.error.type, code: body?.error.code)
+            return .apiError(statusCode: statusCode, message: message, type: parsed?.error.type, code: parsed?.error.code)
         }
     }
 
@@ -406,7 +431,8 @@ extension String {
                 code: nil
             )
         }
-        guard !contains("/"), !contains("\\"), !contains("..") else {
+        guard !contains("/"), !contains("\\"), !contains(".."),
+              !contains("?"), !contains("#"), !contains("%") else {
             throw OpenAIError.apiError(
                 statusCode: 0,
                 message: "Path component contains invalid characters.",

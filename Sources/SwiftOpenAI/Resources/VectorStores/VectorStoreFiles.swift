@@ -62,6 +62,7 @@ public struct VectorStoreFiles: Sendable {
     ///   - vectorStoreId: The ID of the vector store.
     ///   - fileId: The ID of the file to remove.
     /// - Returns: A ``VectorStoreFileDeleted`` confirmation.
+    @discardableResult
     public func delete(vectorStoreId: String, fileId: String) async throws -> VectorStoreFileDeleted {
         let validatedVectorStoreID = try vectorStoreId.validatePathComponent()
         let validatedFileID = try fileId.validatePathComponent()

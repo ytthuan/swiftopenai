@@ -62,7 +62,7 @@ public struct AutoPaginatingSequence<T: Codable & Sendable>: AsyncSequence, Send
         AsyncIterator(currentPage: firstPage, fetchNextPage: fetchNextPage)
     }
 
-    public struct AsyncIterator: AsyncIteratorProtocol {
+    public struct AsyncIterator: AsyncIteratorProtocol, Sendable {
         private var currentPage: CursorPage<T>?
         private var index: Int = 0
         private let fetchNextPage: @Sendable (String) async throws -> CursorPage<T>

@@ -24,6 +24,18 @@ final class MockURLProtocol: URLProtocol, @unchecked Sendable {
     /// Captured request body (URLSession strips httpBody, so we read from httpBodyStream).
     nonisolated(unsafe) static var lastRequestBody: Data?
 
+    /// An error to throw instead of returning a response.
+    nonisolated(unsafe) static var mockError: Error?
+
+    /// Queue of errors/responses for multi-step tests. Each entry is either
+    /// an error (Left) or a response (Right). Pops from the front.
+    nonisolated(unsafe) static var mockSequence: [MockResult] = []
+
+    enum MockResult {
+        case error(Error)
+        case response(Data, HTTPURLResponse)
+    }
+
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
 
@@ -52,6 +64,25 @@ final class MockURLProtocol: URLProtocol, @unchecked Sendable {
 
         Self.requestCount += 1
 
+        if !Self.mockSequence.isEmpty {
+            let result = Self.mockSequence.removeFirst()
+            switch result {
+            case .error(let error):
+                client?.urlProtocol(self, didFailWithError: error)
+                return
+            case .response(let data, let response):
+                client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+                client?.urlProtocol(self, didLoad: data)
+                client?.urlProtocolDidFinishLoading(self)
+                return
+            }
+        }
+
+        if let error = Self.mockError {
+            client?.urlProtocol(self, didFailWithError: error)
+            return
+        }
+
         if !Self.mockResponses.isEmpty {
             let (data, response) = Self.mockResponses.removeFirst()
             client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
@@ -69,6 +100,8 @@ final class MockURLProtocol: URLProtocol, @unchecked Sendable {
     static func reset() {
         mockResponse = nil
         mockResponses = []
+        mockError = nil
+        mockSequence = []
         requestCount = 0
         lastRequest = nil
         lastRequestBody = nil

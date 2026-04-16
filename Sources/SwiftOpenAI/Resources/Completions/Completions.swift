@@ -3,6 +3,7 @@ import Foundation
 /// Access the OpenAI Completions API (legacy).
 ///
 /// For most use cases, prefer the Chat Completions API instead.
+@available(*, deprecated, message: "Use client.chat.completions instead. See https://platform.openai.com/docs/api-reference/completions")
 public struct Completions: Sendable {
 
     private let client: HTTPClient

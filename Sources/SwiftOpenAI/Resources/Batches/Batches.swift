@@ -60,6 +60,7 @@ public struct Batches: Sendable {
     ///
     /// - Parameter id: The batch ID to cancel.
     /// - Returns: The cancelled `Batch` object.
+    @discardableResult
     public func cancel(_ id: String) async throws -> Batch {
         let validatedID = try id.validatePathComponent()
         return try await client.post(path: "batches/\(validatedID)/cancel")

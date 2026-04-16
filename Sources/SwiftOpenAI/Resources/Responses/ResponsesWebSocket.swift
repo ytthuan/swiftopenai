@@ -49,13 +49,13 @@ import Foundation
 public actor ResponsesWebSocket {
 
     private let client: WebSocketClient
+    private let configuration: Configuration
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
     private var isInFlight = false
 
     init(configuration: Configuration, session: URLSession) {
         var request = URLRequest(url: configuration.websocketBaseURL.appendingPathComponent("responses"))
-        request.setValue("Bearer \(configuration.apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(SDK.userAgent, forHTTPHeaderField: "User-Agent")
 
@@ -66,6 +66,7 @@ public actor ResponsesWebSocket {
             request.setValue(project.replacingOccurrences(of: "\r", with: "").replacingOccurrences(of: "\n", with: ""), forHTTPHeaderField: "OpenAI-Project")
         }
 
+        self.configuration = configuration
         self.client = WebSocketClient(session: session, request: request)
         self.encoder = JSONEncoder()
         self.encoder.keyEncodingStrategy = .convertToSnakeCase
@@ -76,7 +77,24 @@ public actor ResponsesWebSocket {
     // MARK: - Connection Lifecycle
 
     /// Opens the underlying WebSocket connection.
-    public func connect() async {
+    public func connect() async throws {
+        let token: String
+        if let provider = configuration.tokenProvider {
+            token = try await provider.getToken()
+        } else {
+            token = configuration.apiKey
+        }
+        var request = URLRequest(url: configuration.websocketBaseURL.appendingPathComponent("responses"))
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(SDK.userAgent, forHTTPHeaderField: "User-Agent")
+        if let organization = configuration.organization {
+            request.setValue(organization.replacingOccurrences(of: "\r", with: "").replacingOccurrences(of: "\n", with: ""), forHTTPHeaderField: "OpenAI-Organization")
+        }
+        if let project = configuration.project {
+            request.setValue(project.replacingOccurrences(of: "\r", with: "").replacingOccurrences(of: "\n", with: ""), forHTTPHeaderField: "OpenAI-Project")
+        }
+        await client.updateRequest(request)
         await client.connect()
     }
 
@@ -192,7 +210,13 @@ public actor ResponsesWebSocket {
                             break
                         }
 
-                        let streamEvent = try decoder.decode(ResponseStreamEvent.self, from: data)
+                        let streamEvent: ResponseStreamEvent
+                        do {
+                            streamEvent = try decoder.decode(ResponseStreamEvent.self, from: data)
+                        } catch {
+                            continuation.finish(throwing: OpenAIError.decodingError(message: "\(error)"))
+                            break
+                        }
                         continuation.yield(streamEvent)
 
                         // Terminal events
@@ -204,8 +228,10 @@ public actor ResponsesWebSocket {
                         }
                     }
                     continuation.finish()
-                } catch {
+                } catch let error as OpenAIError {
                     continuation.finish(throwing: error)
+                } catch {
+                    continuation.finish(throwing: OpenAIError.connectionError(message: "\(error)"))
                 }
                 await self.setInFlight(false)
             }
@@ -329,12 +355,9 @@ public actor ResponsesWebSocket {
         do {
             data = try encoder.encode(value)
         } catch {
-            throw OpenAIError.decodingError(message: "Failed to encode WebSocket payload: \(error.localizedDescription)")
+            throw OpenAIError.apiError(statusCode: 0, message: "Encoding failed: \(error)", type: nil, code: nil)
         }
-        guard let text = String(data: data, encoding: .utf8) else {
-            throw OpenAIError.decodingError(message: "Failed to encode WebSocket payload as UTF-8")
-        }
-        try await client.send(.string(text))
+        try await client.send(.data(data))
     }
 }
 
@@ -349,12 +372,12 @@ private func receiveRawData(client: WebSocketClient) async throws -> Data? {
         if nsError.code == 57 || nsError.code == 54 || nsError.code == -999 {
             return nil
         }
-        throw error
+        throw OpenAIError.connectionError(message: "\(error)")
     }
 
     switch message {
     case .string(let text):
-        return text.data(using: .utf8)
+        return Data(text.utf8)
     case .data(let data):
         return data
     @unknown default:

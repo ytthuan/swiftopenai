@@ -41,22 +41,21 @@ public actor RealtimeConnection {
     private var session: URLSession?
     private var webSocketTask: URLSessionWebSocketTask?
     private var isConnected = false
+    private let urlSession: URLSession
     
-    private static let encoder: JSONEncoder = {
-        let encoder = JSONEncoder()
-        encoder.keyEncodingStrategy = .convertToSnakeCase
-        return encoder
-    }()
+    private let encoder: JSONEncoder
+    private let decoder: JSONDecoder
     
-    private static let decoder: JSONDecoder = {
-        let decoder = JSONDecoder()
-        decoder.keyDecodingStrategy = .convertFromSnakeCase
-        return decoder
-    }()
-    
-    init(configuration: Configuration, model: String) {
+    init(configuration: Configuration, model: String, session: URLSession) {
         self.configuration = configuration
         self.model = model
+        let enc = JSONEncoder()
+        enc.keyEncodingStrategy = .convertToSnakeCase
+        self.encoder = enc
+        let dec = JSONDecoder()
+        dec.keyDecodingStrategy = .convertFromSnakeCase
+        self.decoder = dec
+        self.urlSession = session
     }
     
     /// Starts the Realtime session and returns a stream of server events.
@@ -81,7 +80,13 @@ public actor RealtimeConnection {
         }
         
         var request = URLRequest(url: url)
-        request.setValue("Bearer \(configuration.apiKey)", forHTTPHeaderField: "Authorization")
+        let token: String
+        if let provider = configuration.tokenProvider {
+            token = try await provider.getToken()
+        } else {
+            token = configuration.apiKey
+        }
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue("realtime=v1", forHTTPHeaderField: "OpenAI-Beta")
         request.setValue(SDK.userAgent, forHTTPHeaderField: "User-Agent")
         if let org = configuration.organization {
@@ -91,14 +96,14 @@ public actor RealtimeConnection {
             request.setValue(project.replacingOccurrences(of: "\r", with: "").replacingOccurrences(of: "\n", with: ""), forHTTPHeaderField: "OpenAI-Project")
         }
         
-        let newSession = URLSession(configuration: .default)
+        let newSession = urlSession
         self.session = newSession
         let task = newSession.webSocketTask(with: request)
         self.webSocketTask = task
         task.resume()
         self.isConnected = true
         
-        let decoder = Self.decoder
+        let decoder = self.decoder
         let taskRef = task
         
         return AsyncThrowingStream { continuation in
@@ -108,8 +113,14 @@ public actor RealtimeConnection {
                         let message = try await taskRef.receive()
                         switch message {
                         case .string(let text):
-                            guard let data = text.data(using: .utf8) else { continue }
-                            let event = try decoder.decode(RealtimeServerEvent.self, from: data)
+                            let data = Data(text.utf8)
+                            let event: RealtimeServerEvent
+                            do {
+                                event = try decoder.decode(RealtimeServerEvent.self, from: data)
+                            } catch {
+                                continuation.finish(throwing: OpenAIError.decodingError(message: "\(error)"))
+                                return
+                            }
                             continuation.yield(event)
                             
                             // Check for terminal events
@@ -122,7 +133,13 @@ public actor RealtimeConnection {
                                 return
                             }
                         case .data(let data):
-                            let event = try decoder.decode(RealtimeServerEvent.self, from: data)
+                            let event: RealtimeServerEvent
+                            do {
+                                event = try decoder.decode(RealtimeServerEvent.self, from: data)
+                            } catch {
+                                continuation.finish(throwing: OpenAIError.decodingError(message: "\(error)"))
+                                return
+                            }
                             continuation.yield(event)
                         @unknown default:
                             break
@@ -130,14 +147,19 @@ public actor RealtimeConnection {
                     }
                 } catch {
                     if !Task.isCancelled {
-                        continuation.finish(throwing: error)
+                        let nsError = error as NSError
+                        if nsError.code == 57 || nsError.code == 54 || nsError.code == -999 {
+                            // Connection closed/cancelled
+                        } else {
+                            continuation.finish(throwing: OpenAIError.connectionError(message: "\(error)"))
+                        }
                     }
                 }
                 continuation.finish()
                 await self?.markDisconnected()
             }
             
-            continuation.onTermination = { _ in
+            continuation.onTermination = { @Sendable _ in
                 receiveTask.cancel()
                 taskRef.cancel(with: .goingAway, reason: nil)
             }
@@ -147,7 +169,6 @@ public actor RealtimeConnection {
     private func markDisconnected() {
         isConnected = false
         webSocketTask = nil
-        session?.invalidateAndCancel()
         session = nil
     }
     
@@ -158,11 +179,8 @@ public actor RealtimeConnection {
         guard let task = webSocketTask, isConnected else {
             throw OpenAIError.connectionError(message: "Not connected to Realtime API")
         }
-        let data = try Self.encoder.encode(event)
-        guard let text = String(data: data, encoding: .utf8) else {
-            throw OpenAIError.connectionError(message: "Failed to encode event")
-        }
-        try await task.send(.string(text))
+        let data = try encoder.encode(event)
+        try await task.send(.data(data))
     }
     
     /// Updates the session configuration.
@@ -220,7 +238,6 @@ public actor RealtimeConnection {
         webSocketTask?.cancel(with: .goingAway, reason: nil)
         isConnected = false
         webSocketTask = nil
-        session?.invalidateAndCancel()
         session = nil
     }
 }
@@ -233,9 +250,11 @@ public actor RealtimeConnection {
 /// and interact using client events.
 public struct Realtime: Sendable {
     private let configuration: Configuration
+    private let session: URLSession
     
-    init(configuration: Configuration) {
+    init(configuration: Configuration, session: URLSession) {
         self.configuration = configuration
+        self.session = session
     }
     
     /// Creates a new Realtime connection for the specified model.
@@ -243,7 +262,7 @@ public struct Realtime: Sendable {
     /// - Parameter model: The model to use (e.g., "gpt-realtime", "gpt-4o-realtime-preview").
     /// - Returns: A `RealtimeConnection` actor for interacting with the session.
     public func connect(model: String) -> RealtimeConnection {
-        RealtimeConnection(configuration: configuration, model: model)
+        RealtimeConnection(configuration: configuration, model: model, session: session)
     }
 }
 #endif

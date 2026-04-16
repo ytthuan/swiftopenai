@@ -181,6 +181,7 @@ public struct Responses: Sendable {
     ///
     /// - Parameter id: The response ID to delete.
     /// - Returns: The deleted `ResponseDeleted`.
+    @discardableResult
     public func delete(_ id: String) async throws -> ResponseDeleted {
         let validatedID = try id.validatePathComponent()
         return try await client.delete(path: "responses/\(validatedID)")

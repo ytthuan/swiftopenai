@@ -33,6 +33,7 @@ public struct Models: Sendable {
     /// Deletes a fine-tuned model.
     ///
     /// - Parameter id: The model ID to delete.
+    @discardableResult
     public func delete(_ id: String) async throws -> ModelDeleted {
         let validatedID = try id.validatePathComponent()
         return try await client.delete(path: "models/\(validatedID)")

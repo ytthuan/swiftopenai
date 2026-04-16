@@ -142,4 +142,46 @@ extension MockAPITests {
         #expect(response.data[0].message == "Job started")
         #expect(MockURLProtocol.lastRequest?.url?.path.contains("events") == true)
     }
+
+    // MARK: - List Checkpoints (T-005)
+
+    @Test func listFineTuningCheckpoints() async throws {
+        let json = """
+        {
+            "object": "list",
+            "data": [
+                {
+                    "id": "ftckpt-1",
+                    "object": "fine_tuning.job.checkpoint",
+                    "created_at": 1234567890,
+                    "fine_tuned_model_checkpoint": "ft:gpt-4o-mini:org:ckpt-step-100:abc",
+                    "fine_tuning_job_id": "ftjob-123",
+                    "metrics": {
+                        "step": 100,
+                        "train_loss": 0.123,
+                        "train_mean_token_accuracy": 0.95,
+                        "valid_loss": 0.456,
+                        "valid_mean_token_accuracy": 0.89
+                    },
+                    "step_number": 100
+                }
+            ],
+            "has_more": false
+        }
+        """
+        let client = makeMockClient(json: json)
+        let response = try await client.fineTuning.jobs.listCheckpoints("ftjob-123")
+
+        #expect(response.object == "list")
+        #expect(response.data.count == 1)
+        #expect(response.data[0].id == "ftckpt-1")
+        #expect(response.data[0].fineTunedModelCheckpoint == "ft:gpt-4o-mini:org:ckpt-step-100:abc")
+        #expect(response.data[0].fineTuningJobId == "ftjob-123")
+        #expect(response.data[0].stepNumber == 100)
+        #expect(response.data[0].metrics?.trainLoss == 0.123)
+        #expect(response.data[0].metrics?.validLoss == 0.456)
+        #expect(response.data[0].metrics?.trainMeanTokenAccuracy == 0.95)
+        #expect(MockURLProtocol.lastRequest?.url?.path.contains("checkpoints") == true)
+        #expect(response.hasMore == false)
+    }
 }

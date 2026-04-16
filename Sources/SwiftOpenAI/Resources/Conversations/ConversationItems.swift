@@ -97,6 +97,7 @@ public struct ConversationItems: Sendable {
     ///   - itemId: The conversation item ID.
     ///   - conversationId: The conversation ID.
     /// - Returns: The updated ``Conversation``.
+    @discardableResult
     public func delete(_ itemId: String, conversationId: String) async throws -> Conversation {
         let validatedConversationID = try conversationId.validatePathComponent()
         let validatedItemID = try itemId.validatePathComponent()

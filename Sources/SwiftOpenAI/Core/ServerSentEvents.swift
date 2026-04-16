@@ -35,7 +35,7 @@ public struct ServerSentEventsStream<T: Decodable & Sendable>: AsyncSequence, Se
     }
     #endif
 
-    public struct AsyncIterator: AsyncIteratorProtocol {
+    public struct AsyncIterator: AsyncIteratorProtocol, Sendable {
         #if canImport(FoundationNetworking)
         private var iterator: AsyncThrowingStream<UInt8, Error>.AsyncIterator
         private let decoder: JSONDecoder
@@ -123,7 +123,11 @@ public struct ServerSentEventsStream<T: Decodable & Sendable>: AsyncSequence, Se
                     }
 
                     // Decode directly from buffer slice
-                    return try decoder.decode(T.self, from: buffer[payloadStart..<payloadEnd])
+                    do {
+                        return try decoder.decode(T.self, from: buffer[payloadStart..<payloadEnd])
+                    } catch let error as DecodingError {
+                        throw OpenAIError.decodingError(message: "\(error)")
+                    }
                 } else {
                     buffer.append(byte)
                     if buffer.count > maxBufferSize {
@@ -164,8 +168,12 @@ public struct ServerSentEventsStream<T: Decodable & Sendable>: AsyncSequence, Se
                 if payload == "[DONE]" { return nil }
 
                 // Decode from payload
-                guard let data = String(payload).data(using: .utf8) else { continue }
-                return try decoder.decode(T.self, from: data)
+                let data = Data(payload.utf8)
+                do {
+                    return try decoder.decode(T.self, from: data)
+                } catch let error as DecodingError {
+                    throw OpenAIError.decodingError(message: "\(error)")
+                }
             }
             return nil
             #endif

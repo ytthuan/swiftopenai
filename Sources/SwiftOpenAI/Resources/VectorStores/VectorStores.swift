@@ -86,6 +86,7 @@ public struct VectorStores: Sendable {
     ///
     /// - Parameter id: The ID of the vector store to delete.
     /// - Returns: A ``VectorStoreDeleted`` confirmation.
+    @discardableResult
     public func delete(_ id: String) async throws -> VectorStoreDeleted {
         let validatedID = try id.validatePathComponent()
         return try await client.delete(path: "vector_stores/\(validatedID)")

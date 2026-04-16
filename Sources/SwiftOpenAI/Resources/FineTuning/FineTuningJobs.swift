@@ -62,6 +62,7 @@ public struct FineTuningJobs: Sendable {
     ///
     /// - Parameter id: The fine-tuning job identifier.
     /// - Returns: The cancelled ``FineTuningJob``.
+    @discardableResult
     public func cancel(_ id: String) async throws -> FineTuningJob {
         let validatedID = try id.validatePathComponent()
         return try await client.post(path: "fine_tuning/jobs/\(validatedID)/cancel", body: nil as String?)

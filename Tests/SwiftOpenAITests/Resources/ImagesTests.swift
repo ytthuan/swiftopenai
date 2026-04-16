@@ -69,4 +69,39 @@ extension MockAPITests {
         #expect(MockURLProtocol.lastRequest?.value(forHTTPHeaderField: "Content-Type")?.contains("multipart/form-data") == true)
     }
 
+    // MARK: - Image Variation (T-004)
+
+    @Test func createImageVariation() async throws {
+        let json = """
+        {
+            "created": 1234567890,
+            "data": [
+                {
+                    "url": "https://example.com/variation.png"
+                }
+            ]
+        }
+        """
+        let client = makeMockClient(json: json)
+        let response = try await client.images.createVariation(
+            image: Data("fake-image".utf8),
+            n: 2,
+            size: "256x256"
+        )
+
+        #expect(response.created == 1234567890)
+        #expect(response.data.count == 1)
+        #expect(response.data[0].url == "https://example.com/variation.png")
+
+        let requestURL = MockURLProtocol.lastRequest?.url?.path
+        #expect(requestURL?.contains("images/variations") == true)
+
+        #expect(MockURLProtocol.lastRequestBody != nil)
+        if let body = MockURLProtocol.lastRequestBody {
+            let bodyString = String(data: body, encoding: .utf8)
+            #expect(bodyString?.contains("fake-image") == true)
+        }
+        #expect(MockURLProtocol.lastRequest?.value(forHTTPHeaderField: "Content-Type")?.contains("multipart/form-data") == true)
+    }
+
 }

@@ -40,6 +40,39 @@ public enum OpenAIError: Error, Sendable {
     case bufferOverflow(message: String)
 }
 
+extension OpenAIError: Equatable {
+    public static func == (lhs: OpenAIError, rhs: OpenAIError) -> Bool {
+        switch (lhs, rhs) {
+        case (.apiError(let ls, let lm, let lt, let lc), .apiError(let rs, let rm, let rt, let rc)):
+            return ls == rs && lm == rm && lt == rt && lc == rc
+        case (.authenticationError(let l), .authenticationError(let r)):
+            return l == r
+        case (.permissionDeniedError(let l), .permissionDeniedError(let r)):
+            return l == r
+        case (.conflictError(let l), .conflictError(let r)):
+            return l == r
+        case (.notFoundError(let l), .notFoundError(let r)):
+            return l == r
+        case (.rateLimitError(let l), .rateLimitError(let r)):
+            return l == r
+        case (.unprocessableEntityError(let l), .unprocessableEntityError(let r)):
+            return l == r
+        case (.internalServerError(let l), .internalServerError(let r)):
+            return l == r
+        case (.connectionError(let l), .connectionError(let r)):
+            return l == r
+        case (.decodingError(let l), .decodingError(let r)):
+            return l == r
+        case (.timeout, .timeout):
+            return true
+        case (.bufferOverflow(let l), .bufferOverflow(let r)):
+            return l == r
+        default:
+            return false
+        }
+    }
+}
+
 extension OpenAIError: LocalizedError {
     public var errorDescription: String? {
         switch self {

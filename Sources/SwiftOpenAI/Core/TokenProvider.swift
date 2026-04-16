@@ -83,6 +83,8 @@ public actor EntraIDTokenProvider: TokenProvider {
         self.session = session
     }
 
+    private static let decoder = JSONDecoder()
+
     public func getToken() async throws -> String {
         // Return cached token if still valid
         if let token = cachedToken, let expiry = expiresAt, Date() < expiry {
@@ -103,18 +105,32 @@ public actor EntraIDTokenProvider: TokenProvider {
         ]
         request.httpBody = bodyComponents.joined(separator: "&").data(using: .utf8)
 
-        let (data, response) = try await session.data(for: request)
+        let (data, response): (Data, URLResponse)
+        do {
+            (data, response) = try await session.data(for: request)
+        } catch let error as URLError {
+            throw OpenAIError.connectionError(message: "Entra ID token request failed: \(error.localizedDescription)")
+        }
 
         guard let httpResponse = response as? HTTPURLResponse else {
             throw OpenAIError.connectionError(message: "Bad response from Entra ID token endpoint")
         }
 
         guard (200..<300).contains(httpResponse.statusCode) else {
-            let body = String(data: data, encoding: .utf8) ?? "Unknown error"
-            throw OpenAIError.authenticationError(message: "Entra ID token request failed (\(httpResponse.statusCode)): \(body)")
+            if let parsed = try? Self.decoder.decode(EntraIDErrorResponse.self, from: data) {
+                let errorCode = parsed.error ?? "oauth_error"
+                let description = parsed.errorDescription ?? "token request failed"
+                throw OpenAIError.authenticationError(message: "\(errorCode): \(description)")
+            }
+            throw OpenAIError.authenticationError(message: "Token request failed with status \(httpResponse.statusCode)")
         }
 
-        let tokenResponse = try JSONDecoder().decode(EntraIDTokenResponse.self, from: data)
+        let tokenResponse: EntraIDTokenResponse
+        do {
+            tokenResponse = try Self.decoder.decode(EntraIDTokenResponse.self, from: data)
+        } catch {
+            throw OpenAIError.decodingError(message: "Failed to decode Entra ID token response: \(error)")
+        }
 
         // Cache with 5-minute safety margin
         cachedToken = tokenResponse.accessToken
@@ -137,7 +153,7 @@ public actor EntraIDTokenProvider: TokenProvider {
 }
 
 /// Response from the Entra ID token endpoint.
-struct EntraIDTokenResponse: Codable {
+struct EntraIDTokenResponse: Codable, Sendable {
     let accessToken: String
     let expiresIn: Int
     let tokenType: String
@@ -146,5 +162,16 @@ struct EntraIDTokenResponse: Codable {
         case accessToken = "access_token"
         case expiresIn = "expires_in"
         case tokenType = "token_type"
+    }
+}
+
+/// Error response from the Entra ID token endpoint.
+private struct EntraIDErrorResponse: Codable {
+    let error: String?
+    let errorDescription: String?
+
+    enum CodingKeys: String, CodingKey {
+        case error
+        case errorDescription = "error_description"
     }
 }

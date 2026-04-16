@@ -73,6 +73,7 @@ public struct Files: Sendable {
     ///
     /// - Parameter id: The ID of the file to delete.
     /// - Returns: The deletion confirmation.
+    @discardableResult
     public func delete(_ id: String) async throws -> FileDeleted {
         let validatedID = try id.validatePathComponent()
         return try await client.delete(path: "files/\(validatedID)")
