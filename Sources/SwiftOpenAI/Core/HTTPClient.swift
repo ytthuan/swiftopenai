@@ -274,21 +274,58 @@ struct HTTPClient: Sendable {
         // Linux: URLSession.AsyncBytes is unavailable in swift-corelibs-foundation.
         // Buffer the full response, then yield bytes. True incremental streaming
         // can be added via URLSessionDataDelegate in a future release.
-        let authorizedReq = try await authorizedRequest(request)
-        let (data, response): (Data, URLResponse)
-        do {
-            (data, response) = try await session.data(for: authorizedReq)
-        } catch let error as URLError {
-            throw mapURLError(error)
-        }
-        try validateResponse(data: data, response: response)
-        let byteStream = AsyncThrowingStream<UInt8, Error> { continuation in
-            for byte in data {
-                continuation.yield(byte)
+        // Retry transient errors (429, 5xx, transient URLErrors) before streaming begins.
+        let maxRetries = configuration.maxRetries
+        let transientURLErrorCodes: Set<URLError.Code> = [
+            .timedOut, .networkConnectionLost, .cannotConnectToHost,
+            .dnsLookupFailed, .cannotFindHost
+        ]
+        var authorizedReq = try await self.authorizedRequest(request)
+        for attempt in 0...maxRetries {
+            if attempt > 0 && configuration.tokenProvider != nil {
+                authorizedReq = try await self.authorizedRequest(request)
             }
-            continuation.finish()
+            let (data, response): (Data, URLResponse)
+            do {
+                (data, response) = try await session.data(for: authorizedReq)
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch let error as URLError {
+                if transientURLErrorCodes.contains(error.code) && attempt < maxRetries {
+                    let delay = retryDelay(for: attempt, response: nil)
+                    try await Task.sleep(for: .seconds(delay))
+                    continue
+                }
+                throw mapURLError(error)
+            }
+
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw OpenAIError.connectionError(message: "Bad server response")
+            }
+
+            let statusCode = httpResponse.statusCode
+            let isRetryable = statusCode == 429 || statusCode >= 500
+            let isLastAttempt = attempt == maxRetries
+
+            if isRetryable && !isLastAttempt {
+                let delay = retryDelay(for: attempt, response: httpResponse)
+                try await Task.sleep(for: .seconds(delay))
+                continue
+            }
+
+            guard (200..<300).contains(statusCode) else {
+                throw try parseAPIError(data: data, statusCode: statusCode)
+            }
+
+            let byteStream = AsyncThrowingStream<UInt8, Error> { continuation in
+                for byte in data {
+                    continuation.yield(byte)
+                }
+                continuation.finish()
+            }
+            return ServerSentEventsStream<T>(byteStream: byteStream, decoder: Self.decoder)
         }
-        return ServerSentEventsStream<T>(byteStream: byteStream, decoder: Self.decoder)
+        preconditionFailure("Unreachable")
         #else
         // Apple platforms: true incremental streaming via URLSession.AsyncBytes.
         // Retry transient errors (429, 5xx, transient URLErrors) before streaming begins.
