@@ -14,6 +14,7 @@ A comprehensive, pure Swift SDK for the [OpenAI API](https://platform.openai.com
 - **Full API coverage** — Responses, Chat Completions, Embeddings, Images, Audio, Files, Fine-tuning, Batches, Vector Stores, Uploads, Moderations, Models, Conversations, Realtime, and Legacy Completions
 - **Async/await** — every network call uses Swift concurrency; no completion handlers
 - **Streaming** — `AsyncSequence`-based SSE streaming for Responses and Chat Completions
+- **Vision / Image Input** — multimodal text + image messages for Chat Completions and Responses APIs, with base64 convenience helpers
 - **WebSocket mode** — persistent connection for Responses API with warmup support (Darwin only)
 - **Realtime API** — full-duplex text and audio sessions via WebSocket (Darwin only)
 - **Conversations API** — first-class multi-turn conversation management
@@ -35,7 +36,7 @@ Add SwiftOpenAI to your `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/ytthuan/swiftopenai.git", from: "0.8.0")
+    .package(url: "https://github.com/ytthuan/swiftopenai.git", from: "0.9.0")
 ]
 ```
 
@@ -311,6 +312,40 @@ let response = try await client.responses.create(
 
 // Use the outputText convenience property
 print(response.outputText ?? "")
+```
+
+### Vision / Image Input (Responses)
+
+Send images with the Responses API using `ResponseInputContentPart`:
+
+```swift
+let response = try await client.responses.create(
+    model: "gpt-4o",
+    input: .messages([
+        .user(parts: [
+            .inputText("What's in this image?"),
+            .inputImage(url: "https://example.com/photo.jpg", detail: .high),
+        ])
+    ])
+)
+
+print(response.outputText ?? "")
+```
+
+With base64 image data:
+
+```swift
+let imageData = try Data(contentsOf: URL(fileURLWithPath: "chart.png"))
+
+let response = try await client.responses.create(
+    model: "gpt-4o",
+    input: .messages([
+        .user(parts: [
+            .inputText("Analyze this chart."),
+            .inputImage(data: imageData, mimeType: .png, detail: .auto),
+        ])
+    ])
+)
 ```
 
 ### System Instructions
@@ -1086,6 +1121,71 @@ print(completion.choices.first?.message.content ?? "")
 // → The capital of France is Paris.
 ```
 
+### Vision / Image Input
+
+Send images alongside text using vision-capable models like `gpt-4o`.
+
+#### Image URL
+
+```swift
+let completion = try await client.chat.completions.create(
+    model: "gpt-4o",
+    messages: [
+        .user(
+            text: "What's in this image?",
+            imageURL: "https://example.com/photo.jpg",
+            detail: .high
+        )
+    ]
+)
+
+print(completion.choices.first?.message.content ?? "")
+```
+
+#### Base64 Image (from Data)
+
+```swift
+let imageData = try Data(contentsOf: URL(fileURLWithPath: "photo.png"))
+
+let completion = try await client.chat.completions.create(
+    model: "gpt-4o",
+    messages: [
+        .user(
+            text: "Describe this image.",
+            imageData: imageData,
+            mimeType: .png,
+            detail: .low
+        )
+    ]
+)
+```
+
+#### Multiple Images
+
+```swift
+let completion = try await client.chat.completions.create(
+    model: "gpt-4o",
+    messages: [
+        .user(parts: [
+            .text("Compare these two images:"),
+            .imageURL(ChatCompletionImageURL(url: "https://example.com/a.jpg")),
+            .imageURL(ChatCompletionImageURL(url: "https://example.com/b.jpg")),
+        ])
+    ]
+)
+```
+
+#### Supported Image Types
+
+| Type | Enum | MIME Type |
+|------|------|-----------|
+| PNG | `.png` | `image/png` |
+| JPEG | `.jpeg` | `image/jpeg` |
+| GIF | `.gif` | `image/gif` |
+| WebP | `.webp` | `image/webp` |
+
+> **Note:** Both HTTP/HTTPS URLs and base64 data URIs are supported. The `detail` parameter controls resolution: `.low` (fast, fewer tokens), `.high` (full resolution), or `.auto` (model decides).
+
 ### Multi-turn
 
 ```swift
@@ -1664,6 +1764,7 @@ The [`Examples/`](Examples/) directory contains copy-paste-ready usage examples:
 | [`ChatExamples.swift`](Examples/ChatExamples.swift) | Chat completions, multi-turn, streaming, tool calling, JSON mode, structured output |
 | [`ResponsesExamples.swift`](Examples/ResponsesExamples.swift) | Responses API, `previousResponseId` chaining, streaming, Conversations API |
 | [`AdvancedExamples.swift`](Examples/AdvancedExamples.swift) | Audio, fine-tuning, batches, vector stores, chunked uploads, custom configuration |
+| [`MultimodalExamples.swift`](Examples/MultimodalExamples.swift) | Vision / image input with Chat and Responses APIs |
 
 ---
 
