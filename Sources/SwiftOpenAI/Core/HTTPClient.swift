@@ -291,32 +291,68 @@ struct HTTPClient: Sendable {
         return ServerSentEventsStream<T>(byteStream: byteStream, decoder: Self.decoder)
         #else
         // Apple platforms: true incremental streaming via URLSession.AsyncBytes.
-        let authorizedReq = try await authorizedRequest(request)
-        let (bytes, response): (URLSession.AsyncBytes, URLResponse)
-        do {
-            (bytes, response) = try await session.bytes(for: authorizedReq)
-        } catch let error as URLError {
-            throw mapURLError(error)
-        }
-
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw OpenAIError.connectionError(message: "Bad server response")
-        }
-
-        guard (200..<300).contains(httpResponse.statusCode) else {
-            let maxErrorSize = 10 * 1024 * 1024 // 10 MB
-            var errorData = Data()
-            errorData.reserveCapacity(1024)
-            for try await byte in bytes {
-                errorData.append(byte)
-                if errorData.count > maxErrorSize {
-                    throw OpenAIError.bufferOverflow(message: "Error response exceeded 10 MB")
-                }
+        // Retry transient errors (429, 5xx, transient URLErrors) before streaming begins.
+        let maxRetries = configuration.maxRetries
+        let transientURLErrorCodes: Set<URLError.Code> = [
+            .timedOut, .networkConnectionLost, .cannotConnectToHost,
+            .dnsLookupFailed, .cannotFindHost
+        ]
+        var authorizedReq = try await self.authorizedRequest(request)
+        for attempt in 0...maxRetries {
+            if attempt > 0 && configuration.tokenProvider != nil {
+                authorizedReq = try await self.authorizedRequest(request)
             }
-            throw try parseAPIError(data: errorData, statusCode: httpResponse.statusCode)
-        }
+            let (bytes, response): (URLSession.AsyncBytes, URLResponse)
+            do {
+                (bytes, response) = try await session.bytes(for: authorizedReq)
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch let error as URLError {
+                if transientURLErrorCodes.contains(error.code) && attempt < maxRetries {
+                    let delay = retryDelay(for: attempt, response: nil)
+                    try await Task.sleep(for: .seconds(delay))
+                    continue
+                }
+                throw mapURLError(error)
+            }
 
-        return ServerSentEventsStream<T>(bytes: bytes, response: response, decoder: Self.decoder)
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw OpenAIError.connectionError(message: "Bad server response")
+            }
+
+            let statusCode = httpResponse.statusCode
+            let isRetryable = statusCode == 429 || statusCode >= 500
+            let isLastAttempt = attempt == maxRetries
+
+            if isRetryable && !isLastAttempt {
+                let delay = retryDelay(for: attempt, response: httpResponse)
+                try await Task.sleep(for: .seconds(delay))
+                continue
+            }
+
+            guard (200..<300).contains(statusCode) else {
+                // B-05: Wrap error-body read in do/catch to prevent URLError leaking
+                let maxErrorSize = 10 * 1024 * 1024 // 10 MB
+                var errorData = Data()
+                errorData.reserveCapacity(1024)
+                do {
+                    for try await byte in bytes {
+                        errorData.append(byte)
+                        if errorData.count > maxErrorSize {
+                            throw OpenAIError.bufferOverflow(message: "Error response exceeded 10 MB")
+                        }
+                    }
+                } catch let error as OpenAIError {
+                    throw error
+                } catch {
+                    throw OpenAIError.connectionError(message: "\(error)")
+                }
+                throw try parseAPIError(data: errorData, statusCode: statusCode)
+            }
+
+            return ServerSentEventsStream<T>(bytes: bytes, response: response, decoder: Self.decoder)
+        }
+        preconditionFailure("Unreachable")
         #endif
     }
 

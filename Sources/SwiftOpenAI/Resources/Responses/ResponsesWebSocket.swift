@@ -233,7 +233,9 @@ public actor ResponsesWebSocket {
                 } catch {
                     continuation.finish(throwing: OpenAIError.connectionError(message: "\(error)"))
                 }
-                await self.setInFlight(false)
+                if !Task.isCancelled {
+                    await self.setInFlight(false)
+                }
             }
 
             continuation.onTermination = { @Sendable termination in

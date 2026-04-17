@@ -8,6 +8,7 @@ actor WebSocketClient {
     private var request: URLRequest
     private var task: URLSessionWebSocketTask?
     private var keepaliveTask: Task<Void, Never>?
+    private var lastPongAt: Date = Date()
 
     init(session: URLSession, request: URLRequest) {
         self.session = session
@@ -46,13 +47,29 @@ actor WebSocketClient {
     func startKeepalive(interval: TimeInterval = 30) {
         stopKeepalive()
         let taskRef = task
-        keepaliveTask = Task {
+        lastPongAt = Date()
+        keepaliveTask = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
-                guard !Task.isCancelled, let taskRef else { break }
-                try? await taskRef.sendPing(pongReceiveHandler: { _ in })
+                guard !Task.isCancelled, let taskRef, let self else { break }
+                // Detect dead connection: no pong received within 2× the ping interval
+                let elapsed = Date().timeIntervalSince(await self.lastPongAt)
+                if elapsed > 2 * interval {
+                    taskRef.cancel(with: .goingAway, reason: nil)
+                    break
+                }
+                try? await taskRef.sendPing { [weak self] error in
+                    if error == nil {
+                        Task { await self?.recordPong() }
+                    }
+                }
             }
         }
+    }
+
+    /// Records the receipt of a pong response.
+    private func recordPong() {
+        lastPongAt = Date()
     }
 
     /// Stops keepalive pings.

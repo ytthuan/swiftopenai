@@ -41,6 +41,7 @@ public actor RealtimeConnection {
     private var session: URLSession?
     private var webSocketTask: URLSessionWebSocketTask?
     private var isConnected = false
+    private var hasReceivedFirstMessage = false
     private let urlSession: URLSession
     
     private let encoder: JSONEncoder
@@ -101,7 +102,7 @@ public actor RealtimeConnection {
         let task = newSession.webSocketTask(with: request)
         self.webSocketTask = task
         task.resume()
-        self.isConnected = true
+        self.hasReceivedFirstMessage = false
         
         let decoder = self.decoder
         let taskRef = task
@@ -111,6 +112,9 @@ public actor RealtimeConnection {
                 do {
                     while !Task.isCancelled {
                         let message = try await taskRef.receive()
+                        if await self?.hasReceivedFirstMessage == false {
+                            await self?.markConnected()
+                        }
                         switch message {
                         case .string(let text):
                             let data = Data(text.utf8)
@@ -166,8 +170,14 @@ public actor RealtimeConnection {
         }
     }
     
+    private func markConnected() {
+        isConnected = true
+        hasReceivedFirstMessage = true
+    }
+
     private func markDisconnected() {
         isConnected = false
+        hasReceivedFirstMessage = false
         webSocketTask = nil
         session = nil
     }

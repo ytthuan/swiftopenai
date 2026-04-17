@@ -419,4 +419,97 @@ extension MockAPITests {
         }
     }
 
+    // MARK: - Streaming Retry (B-02)
+
+    @Test func streamingRetryOn429ThenSuccess() async throws {
+        let errorJson = """
+        {"error": {"message": "Rate limit exceeded", "type": "rate_limit_error", "param": null, "code": null}}
+        """
+        let ssePayload = """
+        data: {"id":"chatcmpl-stream-1","object":"chat.completion.chunk","created":1234567890,"model":"gpt-4o","choices":[{"index":0,"delta":{"role":"assistant","content":"Hello"},"finish_reason":"stop"}]}
+
+        data: [DONE]
+
+        """
+        MockURLProtocol.reset()
+        MockURLProtocol.mockResponses = [
+            (errorJson.data(using: .utf8)!, HTTPURLResponse(url: URL(string: "https://api.openai.com/v1")!, statusCode: 429, httpVersion: nil, headerFields: nil)!),
+            (ssePayload.data(using: .utf8)!, HTTPURLResponse(url: URL(string: "https://api.openai.com/v1")!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+        ]
+
+        let client = makeMockClientWithRetry(maxRetries: 2, retryDelay: 0.001)
+        let stream = try await client.chat.completions.createStream(
+            model: "gpt-4o",
+            messages: [.user("Hello!")]
+        )
+
+        var chunks: [ChatCompletionChunk] = []
+        for try await chunk in stream {
+            chunks.append(chunk)
+        }
+
+        #expect(MockURLProtocol.requestCount == 2, "Expected 1 retry after 429")
+        #expect(chunks.count == 1)
+        #expect(chunks.first?.choices.first?.delta?.content == "Hello")
+    }
+
+    @Test func streamingRetryOn500ThenSuccess() async throws {
+        let errorJson = """
+        {"error": {"message": "Server error", "type": "server_error", "param": null, "code": null}}
+        """
+        let ssePayload = """
+        data: {"id":"chatcmpl-stream-2","object":"chat.completion.chunk","created":1234567890,"model":"gpt-4o","choices":[{"index":0,"delta":{"role":"assistant","content":"OK"},"finish_reason":"stop"}]}
+
+        data: [DONE]
+
+        """
+        MockURLProtocol.reset()
+        MockURLProtocol.mockResponses = [
+            (errorJson.data(using: .utf8)!, HTTPURLResponse(url: URL(string: "https://api.openai.com/v1")!, statusCode: 500, httpVersion: nil, headerFields: nil)!),
+            (ssePayload.data(using: .utf8)!, HTTPURLResponse(url: URL(string: "https://api.openai.com/v1")!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+        ]
+
+        let client = makeMockClientWithRetry(maxRetries: 2, retryDelay: 0.001)
+        let stream = try await client.chat.completions.createStream(
+            model: "gpt-4o",
+            messages: [.user("Hello!")]
+        )
+
+        var chunks: [ChatCompletionChunk] = []
+        for try await chunk in stream {
+            chunks.append(chunk)
+        }
+
+        #expect(MockURLProtocol.requestCount == 2, "Expected 1 retry after 500")
+        #expect(chunks.count == 1)
+        #expect(chunks.first?.choices.first?.delta?.content == "OK")
+    }
+
+    @Test func streamingNoRetryOn401() async throws {
+        let errorJson = """
+        {"error": {"message": "Invalid API key", "type": "invalid_request_error", "param": null, "code": "invalid_api_key"}}
+        """
+        MockURLProtocol.reset()
+        MockURLProtocol.mockResponses = [
+            (errorJson.data(using: .utf8)!, HTTPURLResponse(url: URL(string: "https://api.openai.com/v1")!, statusCode: 401, httpVersion: nil, headerFields: nil)!)
+        ]
+
+        let client = makeMockClientWithRetry(maxRetries: 2, retryDelay: 0.001)
+        do {
+            let stream = try await client.chat.completions.createStream(
+                model: "gpt-4o",
+                messages: [.user("Hello!")]
+            )
+            for try await _ in stream {}
+            #expect(Bool(false), "Should have thrown")
+        } catch let error as OpenAIError {
+            if case .authenticationError = error {
+                // Expected
+            } else {
+                #expect(Bool(false), "Expected authenticationError, got: \(error)")
+            }
+        }
+        #expect(MockURLProtocol.requestCount == 1, "Should not retry 401")
+    }
+
 }
