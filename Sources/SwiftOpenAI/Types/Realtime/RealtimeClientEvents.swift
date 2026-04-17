@@ -33,7 +33,11 @@ public struct RealtimeSessionUpdateEvent: Codable, Sendable {
     public let type: String = "session.update"
     public let session: RealtimeSessionConfig
     public var eventId: String?
-    
+
+    private enum CodingKeys: String, CodingKey {
+        case type, session, eventId
+    }
+
     public init(session: RealtimeSessionConfig, eventId: String? = nil) {
         self.session = session
         self.eventId = eventId
@@ -46,7 +50,11 @@ public struct RealtimeInputAudioBufferAppendEvent: Codable, Sendable {
     public let type: String = "input_audio_buffer.append"
     public let audio: String // base64-encoded audio
     public var eventId: String?
-    
+
+    private enum CodingKeys: String, CodingKey {
+        case type, audio, eventId
+    }
+
     public init(audio: String, eventId: String? = nil) {
         self.audio = audio
         self.eventId = eventId
@@ -56,7 +64,11 @@ public struct RealtimeInputAudioBufferAppendEvent: Codable, Sendable {
 public struct RealtimeInputAudioBufferCommitEvent: Codable, Sendable {
     public let type: String = "input_audio_buffer.commit"
     public var eventId: String?
-    
+
+    private enum CodingKeys: String, CodingKey {
+        case type, eventId
+    }
+
     public init(eventId: String? = nil) {
         self.eventId = eventId
     }
@@ -65,7 +77,11 @@ public struct RealtimeInputAudioBufferCommitEvent: Codable, Sendable {
 public struct RealtimeInputAudioBufferClearEvent: Codable, Sendable {
     public let type: String = "input_audio_buffer.clear"
     public var eventId: String?
-    
+
+    private enum CodingKeys: String, CodingKey {
+        case type, eventId
+    }
+
     public init(eventId: String? = nil) {
         self.eventId = eventId
     }
@@ -78,7 +94,11 @@ public struct RealtimeConversationItemCreateEvent: Codable, Sendable {
     public let item: RealtimeConversationItem
     public var previousItemId: String?
     public var eventId: String?
-    
+
+    private enum CodingKeys: String, CodingKey {
+        case type, item, previousItemId, eventId
+    }
+
     public init(item: RealtimeConversationItem, previousItemId: String? = nil, eventId: String? = nil) {
         self.item = item
         self.previousItemId = previousItemId
@@ -90,7 +110,11 @@ public struct RealtimeConversationItemDeleteEvent: Codable, Sendable {
     public let type: String = "conversation.item.delete"
     public let itemId: String
     public var eventId: String?
-    
+
+    private enum CodingKeys: String, CodingKey {
+        case type, itemId, eventId
+    }
+
     public init(itemId: String, eventId: String? = nil) {
         self.itemId = itemId
         self.eventId = eventId
@@ -103,7 +127,11 @@ public struct RealtimeConversationItemTruncateEvent: Codable, Sendable {
     public let contentIndex: Int
     public let audioEndMs: Int
     public var eventId: String?
-    
+
+    private enum CodingKeys: String, CodingKey {
+        case type, itemId, contentIndex, audioEndMs, eventId
+    }
+
     public init(itemId: String, contentIndex: Int, audioEndMs: Int, eventId: String? = nil) {
         self.itemId = itemId
         self.contentIndex = contentIndex
@@ -118,7 +146,11 @@ public struct RealtimeResponseCreateEvent: Codable, Sendable {
     public let type: String = "response.create"
     public var response: RealtimeResponseConfig?
     public var eventId: String?
-    
+
+    private enum CodingKeys: String, CodingKey {
+        case type, response, eventId
+    }
+
     public init(response: RealtimeResponseConfig? = nil, eventId: String? = nil) {
         self.response = response
         self.eventId = eventId
@@ -128,7 +160,11 @@ public struct RealtimeResponseCreateEvent: Codable, Sendable {
 public struct RealtimeResponseCancelEvent: Codable, Sendable {
     public let type: String = "response.cancel"
     public var eventId: String?
-    
+
+    private enum CodingKeys: String, CodingKey {
+        case type, eventId
+    }
+
     public init(eventId: String? = nil) {
         self.eventId = eventId
     }
