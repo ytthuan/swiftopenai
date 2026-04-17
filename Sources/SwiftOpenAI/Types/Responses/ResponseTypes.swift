@@ -305,15 +305,85 @@ public enum ResponseInput: Encodable, Sendable {
 }
 
 /// A message in the Responses API input.
+///
+/// Supports both plain text and multimodal (text + image) content.
+///
+/// Usage:
+/// ```swift
+/// // Plain text
+/// let msg = ResponseInputMessage(role: "user", content: .text("Hello"))
+///
+/// // Multimodal
+/// let msg = ResponseInputMessage(role: "user", content: .parts([
+///     .inputText("What's in this image?"),
+///     .inputImage(url: "https://example.com/photo.jpg", detail: .high)
+/// ]))
+///
+/// // Convenience factory methods
+/// let msg = ResponseInputMessage.user("Hello")
+/// let msg = ResponseInputMessage.user(parts: [
+///     .inputText("Describe this"),
+///     .inputImage(url: "https://example.com/photo.jpg")
+/// ])
+/// ```
 public struct ResponseInputMessage: Encodable, Sendable {
     /// The role of the message author.
     public let role: String
-    /// The text content of the message.
-    public let content: String
+    /// The content of the message — plain text or multimodal parts.
+    public let content: ResponseInputContent
 
-    public init(role: String, content: String) {
+    /// Creates an input message with multimodal content.
+    ///
+    /// - Parameters:
+    ///   - role: The message role (e.g. `"user"`, `"system"`, `"developer"`).
+    ///   - content: The message content (text or multimodal parts).
+    public init(role: String, content: ResponseInputContent) {
         self.role = role
         self.content = content
+    }
+
+    /// Creates an input message with plain text content.
+    ///
+    /// - Parameters:
+    ///   - role: The message role (e.g. `"user"`, `"system"`, `"developer"`).
+    ///   - content: The plain text content string.
+    public init(role: String, content: String) {
+        self.role = role
+        self.content = .text(content)
+    }
+
+    // MARK: - Convenience Factories
+
+    /// Creates a user message with plain text content.
+    ///
+    /// - Parameter text: The text content.
+    /// - Returns: A user-role input message.
+    public static func user(_ text: String) -> Self {
+        ResponseInputMessage(role: "user", content: .text(text))
+    }
+
+    /// Creates a user message with multimodal content parts.
+    ///
+    /// - Parameter parts: The content parts (text, images, etc.).
+    /// - Returns: A user-role input message.
+    public static func user(parts: [ResponseInputContentPart]) -> Self {
+        ResponseInputMessage(role: "user", content: .parts(parts))
+    }
+
+    /// Creates a system message with plain text content.
+    ///
+    /// - Parameter text: The text content.
+    /// - Returns: A system-role input message.
+    public static func system(_ text: String) -> Self {
+        ResponseInputMessage(role: "system", content: .text(text))
+    }
+
+    /// Creates a developer message with plain text content.
+    ///
+    /// - Parameter text: The text content.
+    /// - Returns: A developer-role input message.
+    public static func developer(_ text: String) -> Self {
+        ResponseInputMessage(role: "developer", content: .text(text))
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -342,9 +412,8 @@ public enum ResponseInputItem: Encodable, Sendable {
     public func encode(to encoder: Encoder) throws {
         switch self {
         case .message(let msg):
-            var container = encoder.singleValueContainer()
-            // Wrap with type field
-            try container.encode(MessageInputWrapper(type: "message", role: msg.role, content: msg.content))
+            // Delegate to ResponseInputMessage's own encoder which includes the type field
+            try msg.encode(to: encoder)
         case .functionCallOutput(let output):
             try output.encode(to: encoder)
         case .functionCall(let call):
@@ -359,7 +428,7 @@ public enum ResponseInputItem: Encodable, Sendable {
 struct MessageInputWrapper: Encodable, Sendable {
     let type: String
     let role: String
-    let content: String
+    let content: ResponseInputContent
 }
 
 /// A function call output sent back to the model.
