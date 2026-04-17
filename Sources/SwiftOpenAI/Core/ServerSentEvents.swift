@@ -35,8 +35,10 @@ public struct ServerSentEventsStream<T: Decodable & Sendable>: AsyncSequence, Se
     }
     #endif
 
-    public struct AsyncIterator: AsyncIteratorProtocol, Sendable {
+    public struct AsyncIterator: AsyncIteratorProtocol, @unchecked Sendable {
         #if canImport(FoundationNetworking)
+        // On Linux, AsyncThrowingStream.AsyncIterator does not conform to Sendable
+        // in swift-corelibs-foundation, but usage is single-threaded (sequential iteration).
         private var iterator: AsyncThrowingStream<UInt8, Error>.AsyncIterator
         private let decoder: JSONDecoder
         private var buffer = Data(capacity: 4096)  // typical SSE line < 4KB
