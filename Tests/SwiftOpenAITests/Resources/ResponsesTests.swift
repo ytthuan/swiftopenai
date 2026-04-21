@@ -418,6 +418,23 @@ extension MockAPITests {
         #expect(reasoning["effort"] as? String == "high")
     }
 
+    @Test func encodeResponseToolWebSearch() throws {
+        let data = try HTTPClient.encoder.encode([
+            ResponseTool.webSearch(WebSearchToolDefinition())
+        ])
+        let tools = try #require(JSONSerialization.jsonObject(with: data) as? [[String: Any]])
+        #expect(tools.count == 1)
+        #expect(tools[0]["type"] as? String == "web_search")
+    }
+
+    @Test func encodeResponseToolWebSearchPreview() throws {
+        let data = try HTTPClient.encoder.encode([
+            ResponseTool.webSearch(WebSearchToolDefinition(type: "web_search_preview"))
+        ])
+        let tools = try #require(JSONSerialization.jsonObject(with: data) as? [[String: Any]])
+        #expect(tools[0]["type"] as? String == "web_search_preview")
+    }
+
     @Test func encodeResponseToolCodeInterpreter() throws {
         let data = try HTTPClient.encoder.encode([
             ResponseTool.codeInterpreter(CodeInterpreterToolDefinition(container: "container_123"))

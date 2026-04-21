@@ -549,12 +549,18 @@ public struct FunctionToolDefinition: Encodable, Sendable {
 
 /// A web search tool definition.
 public struct WebSearchToolDefinition: Encodable, Sendable {
-    /// The type, always `"web_search_preview"`.
+    /// The type of web search tool.
+    ///
+    /// Defaults to `"web_search"` (recommended). Use `"web_search_preview"` for
+    /// backward compatibility with older API versions if needed.
     public let type: String
 
     /// Creates a web search tool definition.
-    public init() {
-        self.type = "web_search_preview"
+    ///
+    /// - Parameter type: The tool type. Defaults to `"web_search"` (recommended).
+    ///   Pass `"web_search_preview"` only if required for backward compatibility.
+    public init(type: String = "web_search") {
+        self.type = type
     }
 }
 
