@@ -83,3 +83,6 @@ test-report.md
 *.pem
 *.key
 *.p12
+.github/agents
+.github/skills
+.codex
