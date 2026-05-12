@@ -229,3 +229,55 @@ import FoundationNetworking
     }
 }
 #endif
+
+// MARK: - Multipart Size Limits
+
+@Suite struct MultipartLimitTests {
+
+    @Test func defaultMultipartLimits() {
+        let config = Configuration(apiKey: "sk-test")
+        #expect(config.maxMultipartPartSize == 512 * 1024 * 1024)
+        #expect(config.maxMultipartBodySize == 1024 * 1024 * 1024)
+    }
+
+    @Test func customMultipartLimits() {
+        let config = Configuration(
+            apiKey: "sk-test",
+            maxMultipartPartSize: 64 * 1024 * 1024,
+            maxMultipartBodySize: 128 * 1024 * 1024
+        )
+        #expect(config.maxMultipartPartSize == 64 * 1024 * 1024)
+        #expect(config.maxMultipartBodySize == 128 * 1024 * 1024)
+    }
+
+    @Test func multipartLimitOptOut() {
+        let config = Configuration(
+            apiKey: "sk-test",
+            maxMultipartPartSize: .max,
+            maxMultipartBodySize: .max
+        )
+        #expect(config.maxMultipartPartSize == Int.max)
+        #expect(config.maxMultipartBodySize == Int.max)
+    }
+}
+
+// MARK: - OpenAI init Multipart Limits Thread-Through
+
+@Suite struct OpenAIMultipartInitTests {
+
+    @Test func openAIInitThreadsMultipartLimitsToConfiguration() {
+        let client = OpenAI(
+            apiKey: "sk-test",
+            maxMultipartPartSize: 12345,
+            maxMultipartBodySize: 67890
+        )
+        #expect(client.configuration.maxMultipartPartSize == 12345)
+        #expect(client.configuration.maxMultipartBodySize == 67890)
+    }
+
+    @Test func openAIInitDefaultsMatchConfigurationDefaults() {
+        let client = OpenAI(apiKey: "sk-test")
+        #expect(client.configuration.maxMultipartPartSize == 512 * 1024 * 1024)
+        #expect(client.configuration.maxMultipartBodySize == 1024 * 1024 * 1024)
+    }
+}

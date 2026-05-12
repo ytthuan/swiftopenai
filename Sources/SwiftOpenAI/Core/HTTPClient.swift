@@ -147,7 +147,10 @@ struct HTTPClient: Sendable {
         }
 
         request.setValue(formData.contentType, forHTTPHeaderField: "Content-Type")
-        request.httpBody = formData.encode()
+        request.httpBody = try formData.encode(
+            maxPartSize: configuration.maxMultipartPartSize,
+            maxBodySize: configuration.maxMultipartBodySize
+        )
         return request
     }
 

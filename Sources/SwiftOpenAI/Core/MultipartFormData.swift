@@ -39,56 +39,138 @@ struct MultipartFormData: Sendable {
     }
 
     /// Encodes all parts into the final `Data` body.
-    /// Uses `ContiguousArray<UInt8>` internally to avoid intermediate `Data` allocations.
-    func encode() -> Data {
-        let boundaryBytes = "--\(boundary)".utf8.count
-        let overhead = parts.count * (boundaryBytes + 200) + boundaryBytes + 10
-        let dataSize = parts.reduce(0) { total, part in
+    ///
+    /// Enforces size caps **before** allocation: throws `OpenAIError.bufferOverflow`
+    /// if any single part exceeds `maxPartSize` or if the total body would exceed `maxBodySize`.
+    /// This protects server-side adopters from unbounded memory growth on attacker-controlled
+    /// uploads (CWE-770).
+    ///
+    /// Builds directly into a single `Data` buffer (no intermediate `ContiguousArray`),
+    /// reducing the encoder-side memory peak from ~3× to ~2× payload.
+    ///
+    /// - Parameters:
+    ///   - maxPartSize: Maximum bytes for any single part. `.max` to disable.
+    ///   - maxBodySize: Maximum bytes for the assembled body. `.max` to disable.
+    /// - Throws: `OpenAIError.bufferOverflow` if any limit would be violated.
+    func encode(maxPartSize: Int = .max, maxBodySize: Int = .max) throws -> Data {
+        // 1. Per-part size enforcement (before any aggregation)
+        for part in parts {
+            let size: Int
             switch part {
-            case .field(_, let value): return total + value.utf8.count
-            case .file(_, _, _, let data): return total + data.count
+            case .field(_, let value):
+                size = value.utf8.count
+            case .file(_, _, _, let data):
+                size = data.count
+            }
+            if size > maxPartSize {
+                throw OpenAIError.bufferOverflow(
+                    message: "Multipart part exceeded \(maxPartSize) bytes"
+                )
             }
         }
 
-        var builder = ContiguousArray<UInt8>()
-        builder.reserveCapacity(overhead + dataSize)
+        // 2. Compute exact body size with checked arithmetic.
+        //    This matches the build loop's output byte-for-byte, eliminating any
+        //    under-estimate that could let oversized bodies slip past maxBodySize.
+        let boundaryBytes = "--\(boundary)".utf8.count
+
+        // Closing line: --<boundary>--\r\n
+        var totalSize = boundaryBytes + 4
+
+        for part in parts {
+            let partSize: Int
+            switch part {
+            case .field(let name, let value):
+                let safeName = Self.sanitizeHeaderValue(name)
+                // --<boundary>\r\n
+                // Content-Disposition: form-data; name="<safeName>"\r\n
+                // \r\n
+                // <value>\r\n
+                partSize = boundaryBytes + 2
+                         + ("Content-Disposition: form-data; name=\"".utf8.count
+                            + safeName.utf8.count
+                            + "\"".utf8.count
+                            + 2)
+                         + 2
+                         + value.utf8.count
+                         + 2
+
+            case .file(let name, let filename, let mimeType, let data):
+                let safeName = Self.sanitizeHeaderValue(name)
+                let safeFilename = Self.sanitizeHeaderValue(filename)
+                let safeMimeType = Self.sanitizeHeaderValue(mimeType)
+                // --<boundary>\r\n
+                // Content-Disposition: form-data; name="<safeName>"; filename="<safeFilename>"\r\n
+                // Content-Type: <safeMimeType>\r\n
+                // \r\n
+                // <data>\r\n
+                partSize = boundaryBytes + 2
+                         + ("Content-Disposition: form-data; name=\"".utf8.count
+                            + safeName.utf8.count
+                            + "\"; filename=\"".utf8.count
+                            + safeFilename.utf8.count
+                            + "\"".utf8.count
+                            + 2)
+                         + ("Content-Type: ".utf8.count + safeMimeType.utf8.count + 2)
+                         + 2
+                         + data.count
+                         + 2
+            }
+            // Note: sanitizeHeaderValue is called again in the build loop below.
+            // This is intentional — the function is pure string manipulation and fast;
+            // caching would add memory complexity for marginal benefit.
+            let (newTotal, overflow) = totalSize.addingReportingOverflow(partSize)
+            if overflow {
+                throw OpenAIError.bufferOverflow(message: "Multipart body computation overflowed")
+            }
+            totalSize = newTotal
+        }
+
+        if totalSize > maxBodySize {
+            throw OpenAIError.bufferOverflow(
+                message: "Multipart body exceeded \(maxBodySize) bytes"
+            )
+        }
+
+        // 3. Single-allocation Data build
+        var body = Data(capacity: totalSize)
 
         let crlfBytes: [UInt8] = [0x0D, 0x0A]
         let boundaryLine = "--\(boundary)"
         let closingLine = "--\(boundary)--"
 
         for part in parts {
-            builder.append(contentsOf: boundaryLine.utf8)
-            builder.append(contentsOf: crlfBytes)
+            body.append(contentsOf: boundaryLine.utf8)
+            body.append(contentsOf: crlfBytes)
 
             switch part {
             case .field(let name, let value):
                 let safeName = Self.sanitizeHeaderValue(name)
                 let header = "Content-Disposition: form-data; name=\"\(safeName)\""
-                builder.append(contentsOf: header.utf8)
-                builder.append(contentsOf: crlfBytes)
-                builder.append(contentsOf: crlfBytes)
-                builder.append(contentsOf: value.utf8)
-                builder.append(contentsOf: crlfBytes)
+                body.append(contentsOf: header.utf8)
+                body.append(contentsOf: crlfBytes)
+                body.append(contentsOf: crlfBytes)
+                body.append(contentsOf: value.utf8)
+                body.append(contentsOf: crlfBytes)
 
             case .file(let name, let filename, let mimeType, let data):
                 let safeName = Self.sanitizeHeaderValue(name)
                 let safeFilename = Self.sanitizeHeaderValue(filename)
                 let header = "Content-Disposition: form-data; name=\"\(safeName)\"; filename=\"\(safeFilename)\""
                 let contentType = "Content-Type: \(Self.sanitizeHeaderValue(mimeType))"
-                builder.append(contentsOf: header.utf8)
-                builder.append(contentsOf: crlfBytes)
-                builder.append(contentsOf: contentType.utf8)
-                builder.append(contentsOf: crlfBytes)
-                builder.append(contentsOf: crlfBytes)
-                builder.append(contentsOf: data)
-                builder.append(contentsOf: crlfBytes)
+                body.append(contentsOf: header.utf8)
+                body.append(contentsOf: crlfBytes)
+                body.append(contentsOf: contentType.utf8)
+                body.append(contentsOf: crlfBytes)
+                body.append(contentsOf: crlfBytes)
+                body.append(data)
+                body.append(contentsOf: crlfBytes)
             }
         }
 
-        builder.append(contentsOf: closingLine.utf8)
-        builder.append(contentsOf: crlfBytes)
-        return Data(builder)
+        body.append(contentsOf: closingLine.utf8)
+        body.append(contentsOf: crlfBytes)
+        return body
     }
 
     // MARK: - Internal

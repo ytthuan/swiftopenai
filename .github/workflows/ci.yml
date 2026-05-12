@@ -34,7 +34,15 @@ jobs:
   linux:
     name: Linux (Swift 6.0)
     runs-on: ubuntu-latest
-    container: swift:6.0
+    # Pinned to immutable Docker digest to prevent supply-chain attacks via tag mutation (CWE-494).
+    # Refresh cadence: quarterly OR on Swift point release (whichever comes first).
+    # Refresh procedure:
+    #   1. docker pull swift:6.0
+    #   2. docker inspect --format='{{index .RepoDigests 0}}' swift:6.0
+    #   3. Update the @sha256:... below with the new digest, commit with message
+    #      "ci(linux): refresh swift:6.0 digest pin"
+    # See SECURITY scan F-03 (CWE-494, 2026-05-12) for context.
+    container: swift:6.0@sha256:efe796adab2659a1932f11270fdc8fe733382a98607b8c56879324d82f926a49
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - name: Cache SPM

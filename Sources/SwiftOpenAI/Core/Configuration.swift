@@ -49,6 +49,31 @@ public struct Configuration: Sendable {
     ///   connection at the OS level.
     public let allowInsecureRequests: Bool
 
+    /// Maximum size in bytes for any single multipart upload part.
+    ///
+    /// When a part (e.g., file payload) exceeds this size, `MultipartFormData.encode`
+    /// throws `OpenAIError.bufferOverflow` *before* allocating the request body, preventing
+    /// unbounded memory growth at the trust boundary in server-side adopters.
+    ///
+    /// Default is 512 MB, matching OpenAI's Files API server-side limit.
+    /// Set to `Int.max` to disable enforcement (caller assumes responsibility).
+    ///
+    /// - Note: On memory-constrained platforms (iOS, watchOS), set this explicitly
+    ///   to a value appropriate to your process heap (e.g., 64 MB for iOS).
+    public let maxMultipartPartSize: Int
+
+    /// Maximum total size in bytes for the assembled multipart request body.
+    ///
+    /// When the sum of all parts plus framing overhead would exceed this size,
+    /// `MultipartFormData.encode` throws `OpenAIError.bufferOverflow` *before* allocating
+    /// the request body.
+    ///
+    /// Default is 1 GB, providing 2× headroom over the per-part default for multi-part
+    /// uploads. Set to `Int.max` to disable enforcement.
+    ///
+    /// - Note: On memory-constrained platforms (iOS, watchOS), set this explicitly.
+    public let maxMultipartBodySize: Int
+
     public init(
         apiKey: String,
         organization: String? = nil,
@@ -60,11 +85,15 @@ public struct Configuration: Sendable {
         defaultQueryItems: [URLQueryItem] = [],
         tokenProvider: (any TokenProvider)? = nil,
         apiKeyHeaderName: String? = nil,
-        allowInsecureRequests: Bool = false
+        allowInsecureRequests: Bool = false,
+        maxMultipartPartSize: Int = 512 * 1024 * 1024,
+        maxMultipartBodySize: Int = 1024 * 1024 * 1024
     ) {
         precondition(tokenProvider != nil || !apiKey.isEmpty, "SwiftOpenAI: API key must not be empty when no token provider is set")
         precondition(maxRetries >= 0, "SwiftOpenAI: maxRetries must be non-negative")
         precondition(retryDelay >= 0, "SwiftOpenAI: retryDelay must be non-negative")
+        precondition(maxMultipartPartSize > 0, "SwiftOpenAI: maxMultipartPartSize must be positive")
+        precondition(maxMultipartBodySize > 0, "SwiftOpenAI: maxMultipartBodySize must be positive")
         Self.validateURL(baseURL, allowInsecure: allowInsecureRequests)
         self.apiKey = apiKey
         self.organization = organization
@@ -77,6 +106,8 @@ public struct Configuration: Sendable {
         self.tokenProvider = tokenProvider
         self.apiKeyHeaderName = apiKeyHeaderName
         self.allowInsecureRequests = allowInsecureRequests
+        self.maxMultipartPartSize = maxMultipartPartSize
+        self.maxMultipartBodySize = maxMultipartBodySize
     }
 
     // MARK: - URL Validation

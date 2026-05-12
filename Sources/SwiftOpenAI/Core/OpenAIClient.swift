@@ -86,6 +86,8 @@ public final class OpenAI: Sendable {
     ///   - tokenProvider: Optional token provider for dynamic authentication (e.g., Azure Entra ID).
     ///   - apiKeyHeaderName: Custom header name for API key (e.g., `"api-key"` for Azure).
     ///   - allowInsecureRequests: Allow `http`/`ws` for local/LAN hosts (default: false).
+    ///   - maxMultipartPartSize: Maximum bytes for any single multipart part (default: 512 MB).
+    ///   - maxMultipartBodySize: Maximum bytes for the assembled multipart body (default: 1 GB).
     ///   - session: Optional custom URLSession for testing.
     public init(
         apiKey: String,
@@ -99,6 +101,8 @@ public final class OpenAI: Sendable {
         tokenProvider: (any TokenProvider)? = nil,
         apiKeyHeaderName: String? = nil,
         allowInsecureRequests: Bool = false,
+        maxMultipartPartSize: Int = 512 * 1024 * 1024,
+        maxMultipartBodySize: Int = 1024 * 1024 * 1024,
         session: URLSession? = nil
     ) {
         self.configuration = Configuration(
@@ -112,7 +116,9 @@ public final class OpenAI: Sendable {
             defaultQueryItems: defaultQueryItems,
             tokenProvider: tokenProvider,
             apiKeyHeaderName: apiKeyHeaderName,
-            allowInsecureRequests: allowInsecureRequests
+            allowInsecureRequests: allowInsecureRequests,
+            maxMultipartPartSize: maxMultipartPartSize,
+            maxMultipartBodySize: maxMultipartBodySize
         )
         self.httpClient = HTTPClient(configuration: configuration, session: session)
         self.models = Models(client: httpClient)

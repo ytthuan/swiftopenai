@@ -31,105 +31,57 @@ public struct ServerSentEventsStream<T: Decodable & Sendable>: AsyncSequence, Se
     }
 
     public func makeAsyncIterator() -> AsyncIterator {
-        AsyncIterator(lineIterator: bytes.lines.makeAsyncIterator(), decoder: decoder)
+        AsyncIterator(iterator: bytes.makeAsyncIterator(), decoder: decoder)
     }
     #endif
 
+    /// Iterates over SSE events parsed from a byte stream.
+    ///
+    /// AsyncSequence iteration is single-threaded by contract; the iterator is not safe
+    /// to call from multiple tasks concurrently. `@unchecked Sendable` permits transfer
+    /// between tasks but not concurrent use.
     public struct AsyncIterator: AsyncIteratorProtocol, @unchecked Sendable {
         #if canImport(FoundationNetworking)
-        // On Linux, AsyncThrowingStream.AsyncIterator does not conform to Sendable
-        // in swift-corelibs-foundation, but usage is single-threaded (sequential iteration).
         private var iterator: AsyncThrowingStream<UInt8, Error>.AsyncIterator
+        #else
+        private var iterator: URLSession.AsyncBytes.AsyncIterator
+        #endif
         private let decoder: JSONDecoder
-        private var buffer = Data(capacity: 4096)  // typical SSE line < 4KB
+        private var buffer = Data(capacity: 4096)
         /// Maximum SSE buffer size (10 MB) to prevent unbounded memory growth.
         private let maxBufferSize = 10 * 1024 * 1024
+        /// Set to `true` when the `[DONE]` sentinel is encountered.
+        private var done = false
 
+        #if canImport(FoundationNetworking)
         init(iterator: AsyncThrowingStream<UInt8, Error>.AsyncIterator, decoder: JSONDecoder) {
             self.iterator = iterator
             self.decoder = decoder
         }
         #else
-        private var lineIterator: AsyncLineSequence<URLSession.AsyncBytes>.AsyncIterator
-        private let decoder: JSONDecoder
-        /// Maximum single SSE line size (10 MB) to prevent unbounded memory from malformed data.
-        private let maxLineSize = 10 * 1024 * 1024
-
-        init(lineIterator: AsyncLineSequence<URLSession.AsyncBytes>.AsyncIterator, decoder: JSONDecoder) {
-            self.lineIterator = lineIterator
+        init(iterator: URLSession.AsyncBytes.AsyncIterator, decoder: JSONDecoder) {
+            self.iterator = iterator
             self.decoder = decoder
         }
         #endif
 
-        public mutating func next() async throws -> T? {
-            #if canImport(FoundationNetworking)
-            let LF: UInt8 = 0x0A       // \n
-            let CR: UInt8 = 0x0D       // \r
-            let SP: UInt8 = 0x20       // ' '
-            let HT: UInt8 = 0x09       // \t
-            let COLON: UInt8 = 0x3A    // :
+        // MARK: - Byte constants
 
+        // Note: these cannot be `static let` because static stored properties
+        // are not supported inside generic types in Swift.
+        private var LF: UInt8 { 0x0A }       // \n
+        private var CR: UInt8 { 0x0D }       // \r
+        private var SP: UInt8 { 0x20 }       // ' '
+        private var HT: UInt8 { 0x09 }       // \t
+        private var COLON: UInt8 { 0x3A }    // :
+
+        public mutating func next() async throws -> T? {
             while let byte = try await iterator.next() {
                 if byte == LF {
-                    defer { buffer.removeAll(keepingCapacity: true) }
-
-                    // Trim trailing CR (CRLF endings)
-                    if !buffer.isEmpty && buffer[buffer.index(before: buffer.endIndex)] == CR {
-                        buffer.removeLast()
+                    if let result = try processCompleteLine() {
+                        return result
                     }
-
-                    // Skip empty lines
-                    if buffer.isEmpty { continue }
-
-                    // Find first non-whitespace byte
-                    var start = buffer.startIndex
-                    let end = buffer.endIndex
-                    while start < end && (buffer[start] == SP || buffer[start] == HT) {
-                        start += 1
-                    }
-
-                    // Empty after trim or comment line
-                    let count = end - start
-                    if count == 0 || buffer[start] == COLON { continue }
-
-                    // Check for "data:" prefix (5 bytes: d=0x64 a=0x61 t=0x74 a=0x61 :=0x3A)
-                    guard count >= 5,
-                          buffer[start] == 0x64,
-                          buffer[start + 1] == 0x61,
-                          buffer[start + 2] == 0x74,
-                          buffer[start + 3] == 0x61,
-                          buffer[start + 4] == 0x3A
-                    else { continue }
-
-                    // Skip optional space after colon
-                    var payloadStart = start + 5
-                    if payloadStart < end && buffer[payloadStart] == SP {
-                        payloadStart += 1
-                    }
-
-                    // Empty payload
-                    if payloadStart >= end { continue }
-
-                    let payloadEnd = end
-
-                    // Check for "[DONE]" (6 bytes: [=0x5B D=0x44 O=0x4F N=0x4E E=0x45 ]=0x5D)
-                    let payloadLen = payloadEnd - payloadStart
-                    if payloadLen == 6,
-                       buffer[payloadStart] == 0x5B,
-                       buffer[payloadStart + 1] == 0x44,
-                       buffer[payloadStart + 2] == 0x4F,
-                       buffer[payloadStart + 3] == 0x4E,
-                       buffer[payloadStart + 4] == 0x45,
-                       buffer[payloadStart + 5] == 0x5D {
-                        return nil
-                    }
-
-                    // Decode directly from buffer slice
-                    do {
-                        return try decoder.decode(T.self, from: buffer[payloadStart..<payloadEnd])
-                    } catch let error as DecodingError {
-                        throw OpenAIError.decodingError(message: "\(error)")
-                    }
+                    if done { return nil }
                 } else {
                     buffer.append(byte)
                     if buffer.count > maxBufferSize {
@@ -139,46 +91,86 @@ public struct ServerSentEventsStream<T: Decodable & Sendable>: AsyncSequence, Se
                     }
                 }
             }
-            return nil
-            #else
-            // Apple platforms: use AsyncLineSequence for one suspension per line
-            while let line = try await lineIterator.next() {
-                // Guard against single malformed mega-lines
-                if line.utf8.count > maxLineSize {
-                    throw OpenAIError.bufferOverflow(
-                        message: "SSE line exceeded \(maxLineSize) bytes"
-                    )
-                }
 
-                // Skip empty lines
-                let trimmed = line.drop(while: { $0 == " " || $0 == "\t" })
-                if trimmed.isEmpty { continue }
-
-                // Skip comment lines
-                if trimmed.hasPrefix(":") { continue }
-
-                // Check for "data:" prefix
-                guard trimmed.hasPrefix("data:") else { continue }
-
-                // Extract payload after "data:"
-                var payload = trimmed.dropFirst(5)
-                if payload.first == " " { payload = payload.dropFirst() }
-
-                if payload.isEmpty { continue }
-
-                // Check for [DONE]
-                if payload == "[DONE]" { return nil }
-
-                // Decode from payload
-                let data = Data(payload.utf8)
-                do {
-                    return try decoder.decode(T.self, from: data)
-                } catch let error as DecodingError {
-                    throw OpenAIError.decodingError(message: "\(error)")
+            // EOF flush: process any remaining data in the buffer as a final line
+            if !buffer.isEmpty && !done {
+                if let result = try processCompleteLine() {
+                    return result
                 }
             }
             return nil
-            #endif
+        }
+
+        // MARK: - Line Processing
+
+        /// Processes the current buffer as a complete SSE line and resets it.
+        ///
+        /// - Returns: A decoded event if the line contained a valid `data:` payload,
+        ///   or `nil` if the line should be skipped (empty, comment, non-data field).
+        ///   Returns `nil` via early `return` for `[DONE]` sentinel — caller should
+        ///   propagate this as stream termination.
+        /// - Throws: `OpenAIError.decodingError` on JSON decode failure.
+        private mutating func processCompleteLine() throws -> T? {
+            defer { buffer.removeAll(keepingCapacity: true) }
+
+            // Trim trailing CR (CRLF endings)
+            if !buffer.isEmpty && buffer[buffer.index(before: buffer.endIndex)] == CR {
+                buffer.removeLast()
+            }
+
+            // Skip empty lines
+            if buffer.isEmpty { return nil }
+
+            // Find first non-whitespace byte
+            var start = buffer.startIndex
+            let end = buffer.endIndex
+            while start < end && (buffer[start] == SP || buffer[start] == HT) {
+                start += 1
+            }
+
+            // Empty after trim or comment line
+            let count = end - start
+            if count == 0 || buffer[start] == COLON { return nil }
+
+            // Check for "data:" prefix (5 bytes: d=0x64 a=0x61 t=0x74 a=0x61 :=0x3A)
+            guard count >= 5,
+                  buffer[start] == 0x64,
+                  buffer[start + 1] == 0x61,
+                  buffer[start + 2] == 0x74,
+                  buffer[start + 3] == 0x61,
+                  buffer[start + 4] == 0x3A
+            else { return nil }
+
+            // Skip optional space after colon
+            var payloadStart = start + 5
+            if payloadStart < end && buffer[payloadStart] == SP {
+                payloadStart += 1
+            }
+
+            // Empty payload
+            if payloadStart >= end { return nil }
+
+            let payloadEnd = end
+
+            // Check for "[DONE]" (6 bytes: [=0x5B D=0x44 O=0x4F N=0x4E E=0x45 ]=0x5D)
+            let payloadLen = payloadEnd - payloadStart
+            if payloadLen == 6,
+               buffer[payloadStart] == 0x5B,
+               buffer[payloadStart + 1] == 0x44,
+               buffer[payloadStart + 2] == 0x4F,
+               buffer[payloadStart + 3] == 0x4E,
+               buffer[payloadStart + 4] == 0x45,
+               buffer[payloadStart + 5] == 0x5D {
+                done = true
+                return nil
+            }
+
+            // Decode directly from buffer slice
+            do {
+                return try decoder.decode(T.self, from: buffer[payloadStart..<payloadEnd])
+            } catch {
+                throw OpenAIError.decodingError(message: "\(error)")
+            }
         }
     }
 }

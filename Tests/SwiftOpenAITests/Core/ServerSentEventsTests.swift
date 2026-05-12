@@ -321,3 +321,256 @@ private struct TestEvent: Decodable, Sendable, Equatable {
         #expect(chunks[3].choices[0].delta?.content == nil)
     }
 }
+
+// MARK: - SSE Stream Iterator Tests (Darwin path via MockURLProtocol)
+
+#if !canImport(FoundationNetworking)
+
+/// Simple Decodable type for SSE stream iterator tests.
+private struct SSEValue: Decodable, Sendable, Equatable {
+    let value: Int
+}
+
+/// String-valued Decodable for multi-byte UTF-8 tests.
+private struct SSEStringValue: Decodable, Sendable, Equatable {
+    let value: String
+}
+
+/// Custom non-DecodingError for F-04 wrapping test.
+private struct SSETestError: Error {}
+
+/// Type whose init(from:) always throws a non-DecodingError.
+private struct AlwaysThrowsDecodable: Decodable, Sendable {
+    init(from decoder: Decoder) throws {
+        throw SSETestError()
+    }
+}
+
+/// Creates an SSE stream from raw payload data using MockURLProtocol.
+/// Must be called within a `.serialized` suite (MockAPITests) to prevent state races.
+private func makeSSEStream<T: Decodable & Sendable>(
+    payload: Data,
+    as type: T.Type,
+    decoder: JSONDecoder = JSONDecoder()
+) async throws -> ServerSentEventsStream<T> {
+    MockURLProtocol.reset()
+    let config = URLSessionConfiguration.ephemeral
+    config.protocolClasses = [MockURLProtocol.self]
+    let session = URLSession(configuration: config)
+    let url = URL(string: "https://api.openai.com/v1/test-sse")!
+    MockURLProtocol.mockResponse = (
+        payload,
+        HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!
+    )
+    let (bytes, response) = try await session.bytes(from: url)
+    return ServerSentEventsStream<T>(bytes: bytes, response: response, decoder: decoder)
+}
+
+extension MockAPITests {
+
+    // F-02.3: Normal SSE streaming — two events + [DONE] sentinel
+    @Test func normalSSEStreamingStillWorks() async throws {
+        let payload = "data: {\"value\": 1}\n\ndata: {\"value\": 2}\n\ndata: [DONE]\n\n"
+        let stream = try await makeSSEStream(payload: Data(payload.utf8), as: SSEValue.self)
+        var iterator = stream.makeAsyncIterator()
+
+        let first = try await iterator.next()
+        #expect(first == SSEValue(value: 1))
+
+        let second = try await iterator.next()
+        #expect(second == SSEValue(value: 2))
+
+        let done = try await iterator.next()
+        #expect(done == nil)
+    }
+
+    // F-02.4: CRLF line endings handled correctly
+    @Test func crlfSSELineEndingsHandled() async throws {
+        let payload = "data: {\"value\": 1}\r\n\r\ndata: {\"value\": 2}\r\n\r\ndata: [DONE]\r\n\r\n"
+        let stream = try await makeSSEStream(payload: Data(payload.utf8), as: SSEValue.self)
+        var iterator = stream.makeAsyncIterator()
+
+        let first = try await iterator.next()
+        #expect(first == SSEValue(value: 1))
+
+        let second = try await iterator.next()
+        #expect(second == SSEValue(value: 2))
+
+        let done = try await iterator.next()
+        #expect(done == nil)
+    }
+
+    // F-02.5: Comment lines (starting with ':') are skipped
+    @Test func sseCommentLinesAreSkippedInStream() async throws {
+        let payload = ": heartbeat\ndata: {\"value\": 1}\n\n"
+        let stream = try await makeSSEStream(payload: Data(payload.utf8), as: SSEValue.self)
+        var iterator = stream.makeAsyncIterator()
+
+        let first = try await iterator.next()
+        #expect(first == SSEValue(value: 1))
+
+        let done = try await iterator.next()
+        #expect(done == nil)
+    }
+
+    // F-02.6: Unterminated final line is processed via EOF flush
+    @Test func unterminatedFinalSSELineProcessedViaEOFFlush() async throws {
+        // No trailing \n — relies on EOF flush path
+        let payload = "data: {\"value\": 99}"
+        let stream = try await makeSSEStream(payload: Data(payload.utf8), as: SSEValue.self)
+        var iterator = stream.makeAsyncIterator()
+
+        let first = try await iterator.next()
+        #expect(first == SSEValue(value: 99))
+
+        let done = try await iterator.next()
+        #expect(done == nil)
+    }
+
+    // F-02.7: Terminated final line is NOT double-processed
+    @Test func terminatedFinalSSELineNotDoubleProcessed() async throws {
+        // With trailing \n — processCompleteLine fires on \n; EOF flush sees empty buffer
+        let payload = "data: {\"value\": 99}\n"
+        let stream = try await makeSSEStream(payload: Data(payload.utf8), as: SSEValue.self)
+        var iterator = stream.makeAsyncIterator()
+
+        let first = try await iterator.next()
+        #expect(first == SSEValue(value: 99))
+
+        let done = try await iterator.next()
+        #expect(done == nil)
+    }
+
+    // F-02.8: Unterminated [DONE] sentinel is respected via EOF flush + done flag
+    @Test func unterminatedDoneIsRespected() async throws {
+        let payload = "data: [DONE]"
+        let stream = try await makeSSEStream(payload: Data(payload.utf8), as: SSEValue.self)
+        var iterator = stream.makeAsyncIterator()
+
+        let result = try await iterator.next()
+        #expect(result == nil)
+    }
+
+    // F-02.9: Multi-byte UTF-8 (emoji 🎉 = 4-byte sequence) decoded correctly
+    @Test func multiByteUTF8InSSEPayload() async throws {
+        let payload = "data: {\"value\": \"🎉\"}\n\n"
+        let stream = try await makeSSEStream(payload: Data(payload.utf8), as: SSEStringValue.self)
+        var iterator = stream.makeAsyncIterator()
+
+        let first = try await iterator.next()
+        #expect(first == SSEStringValue(value: "🎉"))
+    }
+
+    // F-04 / F-02.10: Non-DecodingError from init(from:) is wrapped as OpenAIError.decodingError
+    @Test func nonDecodingErrorWrappedAsDecodingError() async throws {
+        let payload = "data: {}\n\n"
+        let stream = try await makeSSEStream(payload: Data(payload.utf8), as: AlwaysThrowsDecodable.self)
+        var iterator = stream.makeAsyncIterator()
+
+        do {
+            _ = try await iterator.next()
+            Issue.record("Expected OpenAIError.decodingError to be thrown")
+        } catch let error as OpenAIError {
+            guard case .decodingError = error else {
+                Issue.record("Expected decodingError, got \(error)")
+                return
+            }
+            // Pass — non-DecodingError was correctly wrapped
+        }
+    }
+
+    // F-02.2 + F-02.11: Oversized SSE line throws bufferOverflow; message contains cap value
+    @Test func oversizedSSELineThrowsBufferOverflow() async throws {
+        let maxBuffer = 10 * 1024 * 1024 // 10 MB
+        // Slightly over the limit — buffer will exceed maxBuffer before consuming all bytes
+        let payloadSize = maxBuffer + 100
+        var responseData = Data("data: ".utf8)
+        responseData.append(Data(repeating: UInt8(ascii: "x"), count: payloadSize))
+        responseData.append(Data("\n".utf8))
+
+        let stream = try await makeSSEStream(payload: responseData, as: SSEValue.self)
+        var iterator = stream.makeAsyncIterator()
+
+        do {
+            _ = try await iterator.next()
+            Issue.record("Expected OpenAIError.bufferOverflow to be thrown")
+        } catch let error as OpenAIError {
+            guard case .bufferOverflow(let message) = error else {
+                Issue.record("Expected bufferOverflow, got \(error)")
+                return
+            }
+            // Message must contain the 10 MB cap value
+            #expect(message.contains("\(maxBuffer)"))
+        }
+    }
+}
+
+#endif
+
+// MARK: - SSE Stream Iterator Tests (Linux path via AsyncThrowingStream)
+
+#if canImport(FoundationNetworking)
+
+private struct SSEValue: Decodable, Sendable, Equatable {
+    let value: Int
+}
+
+@Suite struct ServerSentEventsLinuxStreamTests {
+
+    // F-02.1: Oversized SSE line throws bufferOverflow (Linux byte stream path)
+    @Test func oversizedSingleLineThrowsBufferOverflow_LinuxPath() async throws {
+        let maxBuffer = 10 * 1024 * 1024
+        let payloadSize = maxBuffer + 100
+        var lineBytes = Array("data: ".utf8)
+        lineBytes.append(contentsOf: [UInt8](repeating: UInt8(ascii: "x"), count: payloadSize))
+        lineBytes.append(0x0A)
+
+        let byteStream = AsyncThrowingStream<UInt8, Error> { continuation in
+            for byte in lineBytes {
+                continuation.yield(byte)
+            }
+            continuation.finish()
+        }
+
+        let stream = ServerSentEventsStream<SSEValue>(byteStream: byteStream, decoder: JSONDecoder())
+        var iterator = stream.makeAsyncIterator()
+
+        do {
+            _ = try await iterator.next()
+            Issue.record("Expected OpenAIError.bufferOverflow")
+        } catch let error as OpenAIError {
+            guard case .bufferOverflow(let message) = error else {
+                Issue.record("Expected bufferOverflow, got \(error)")
+                return
+            }
+            #expect(message.contains("\(maxBuffer)"))
+        }
+    }
+
+    // F-02.3 Linux variant: Normal SSE streaming
+    @Test func normalSSEStreamingStillWorks_LinuxPath() async throws {
+        let payload = "data: {\"value\": 1}\n\ndata: {\"value\": 2}\n\ndata: [DONE]\n\n"
+        let bytes = Array(payload.utf8)
+
+        let byteStream = AsyncThrowingStream<UInt8, Error> { continuation in
+            for byte in bytes {
+                continuation.yield(byte)
+            }
+            continuation.finish()
+        }
+
+        let stream = ServerSentEventsStream<SSEValue>(byteStream: byteStream, decoder: JSONDecoder())
+        var iterator = stream.makeAsyncIterator()
+
+        let first = try await iterator.next()
+        #expect(first == SSEValue(value: 1))
+
+        let second = try await iterator.next()
+        #expect(second == SSEValue(value: 2))
+
+        let done = try await iterator.next()
+        #expect(done == nil)
+    }
+}
+
+#endif

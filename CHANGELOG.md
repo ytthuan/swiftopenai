@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.1] — 2026-05-12
+
+### Security
+
+- **F-01 (CWE-770, P2/medium)** — Multipart uploads: added configurable size limits (`maxMultipartPartSize`, `maxMultipartBodySize`) to `Configuration` and `OpenAI.init`. Requests exceeding these limits now throw `OpenAIError.bufferOverflow` *before* allocation rather than risking unbounded memory growth at the trust boundary in server-side adopters. Defaults (512 MB part / 1 GB body) track OpenAI's server-side limits; opt out with `Int.max`. The internal encoder was also refactored to eliminate one redundant full-body copy (peak memory reduced from ~3× to ~2× payload). Note: uploads are still buffered eagerly in `Data`; true streaming via `URLRequest.httpBodyStream` is deferred to a future release. **iOS/watchOS adopters should set explicit lower limits** appropriate to their process heap.
+- **F-02 (CWE-400, P3/low)** — Server-Sent Events parser: unified Darwin and Linux iterators into a single byte-by-byte loop. The 10 MB line-size cap now fires *before* string materialization on both platforms (previously, Darwin's `AsyncLineSequence`-based path materialized the full `String` line first). EOF-flush behavior preserved on the unified path so unterminated final SSE lines are still processed.
+- **F-03 (CWE-494, P3/low)** — CI: Linux job container pinned to immutable Docker digest (`swift:6.0@sha256:efe796...6a49`) to prevent supply-chain attacks via Docker Hub tag mutation. Refresh procedure documented inline in `.github/workflows/ci.yml`. Recommended follow-up: add Dependabot Docker ecosystem for automated digest tracking.
+
+### Changed
+
+- `MultipartFormData.encode()` (internal) is now `encode(maxPartSize:maxBodySize:) throws -> Data`. No public API impact — `MultipartFormData` is `internal`.
+- `ServerSentEvents` iterator: non-`DecodingError` exceptions thrown by `JSONDecoder.decode` are now wrapped uniformly as `OpenAIError.decodingError` (was: only `DecodingError` was wrapped, other errors propagated raw).
+
+### Fixed
+
+- `SDK.version` constant synced to `"0.10.1"` (was stale at `"0.8.0"`, never bumped past v0.8.0 despite v0.9.x and v0.10.0 tags). Affects only the `User-Agent` string sent on requests.
+
+### Audit
+
+- L6 deferred audit closure: line-by-line review of all custom `Codable` implementations under `Sources/SwiftOpenAI/Types/Chat/` and `Sources/SwiftOpenAI/Types/Responses/` (12 files, 7 with custom codecs). All polymorphic decoders use safe `default: .other(value)` fallback or explicit `throw`. No medium-or-higher findings. Three low-correctness observations noted but below the suppression bar established in the original Codex scan.
+
 ## [0.8.0] — 2026-04-16
 
 ### Added
@@ -169,7 +190,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CI/CD workflows (GitHub Actions) with Swift build and test pipelines
 - Comprehensive usage examples in `Examples/`
 
-[Unreleased]: https://github.com/ytthuan/swiftopenai/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/ytthuan/swiftopenai/compare/v0.10.1...HEAD
+[0.10.1]: https://github.com/ytthuan/swiftopenai/compare/v0.10.0...v0.10.1
+[0.10.0]: https://github.com/ytthuan/swiftopenai/compare/v0.8.0...v0.10.0
 [0.8.0]: https://github.com/ytthuan/swiftopenai/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/ytthuan/swiftopenai/compare/v0.6.1...v0.7.0
 [0.6.1]: https://github.com/ytthuan/swiftopenai/compare/v0.6.0...v0.6.1

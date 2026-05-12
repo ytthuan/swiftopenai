@@ -36,7 +36,7 @@ Add SwiftOpenAI to your `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/ytthuan/swiftopenai.git", from: "0.10.0")
+    .package(url: "https://github.com/ytthuan/swiftopenai.git", from: "0.10.1")
 ]
 ```
 
@@ -101,7 +101,37 @@ let client = OpenAI(
 | `maxRetries` | `Int` | `2` | Max retry attempts on 429/5xx (set 0 to disable) |
 | `retryDelay` | `TimeInterval` | `0.5` | Base delay for exponential backoff |
 | `allowInsecureRequests` | `Bool` | `false` | Allow `http`/`ws` for local/LAN hosts |
+| `maxMultipartPartSize` | `Int` | `536_870_912` (512 MB) | Max bytes per individual multipart part |
+| `maxMultipartBodySize` | `Int` | `1_073_741_824` (1 GB) | Max bytes for the entire multipart body |
 | `session` | `URLSession?` | `nil` | Custom URLSession (SDK creates one if nil) |
+
+### Multipart upload size limits
+
+Multipart requests (file uploads, audio, images) are validated against two configurable caps **before** any allocation occurs. Exceeding either limit throws `OpenAIError.bufferOverflow` immediately — no unbounded memory growth, no silent OOM crash at the trust boundary.
+
+The defaults (512 MB per part / 1 GB body) track OpenAI's [Files API server-side limit](https://platform.openai.com/docs/api-reference/files). For most server-side and macOS adopters these defaults are appropriate. However, **iOS and watchOS processes run in a constrained memory environment** — the generous defaults can terminate your app before the error is even thrown. Set explicit lower limits that match your expected payload and process heap:
+
+```swift
+// Server-side / macOS: defaults are appropriate
+let client = OpenAI(apiKey: "sk-...")
+
+// iOS / watchOS: lower the limits to match your heap
+let client = OpenAI(
+    apiKey: "sk-...",
+    maxMultipartPartSize: 64 * 1024 * 1024,    // 64 MB
+    maxMultipartBodySize: 128 * 1024 * 1024    // 128 MB
+)
+```
+
+To opt out of size enforcement entirely (caller assumes full responsibility for memory safety):
+
+```swift
+let client = OpenAI(
+    apiKey: "sk-...",
+    maxMultipartPartSize: Int.max,
+    maxMultipartBodySize: Int.max
+)
+```
 
 ### Connection Pre-warming
 
