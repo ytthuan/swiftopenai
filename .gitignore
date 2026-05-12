@@ -85,4 +85,4 @@ test-report.md
 *.p12
 .github/agents
 .github/skills
-.codex
+.codex.mcp.json
