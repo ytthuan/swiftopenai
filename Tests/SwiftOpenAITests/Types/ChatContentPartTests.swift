@@ -156,7 +156,7 @@ import Foundation
         ]}
         """
         let msg = try decoder.decode(ChatCompletionMessage.self, from: Data(json.utf8))
-        if case .userParts(let parts) = msg {
+        if case .userParts(let parts, _) = msg {
             #expect(parts.count == 2)
             #expect(parts[0] == .text("Look at this"))
             #expect(parts[1] == .other(type: "input_audio"))
@@ -192,7 +192,7 @@ import Foundation
     @Test func userStringDecodesFromPlainString() throws {
         let json = #"{"role":"user","content":"hello"}"#
         let msg = try decoder.decode(ChatCompletionMessage.self, from: Data(json.utf8))
-        if case .user(let text) = msg {
+        if case .user(let text, _) = msg {
             #expect(text == "hello")
         } else {
             #expect(Bool(false), "Expected .user case")
@@ -210,7 +210,7 @@ import Foundation
         }
         """#
         let msg = try decoder.decode(ChatCompletionMessage.self, from: Data(json.utf8))
-        if case .userParts(let parts) = msg {
+        if case .userParts(let parts, _) = msg {
             #expect(parts.count == 2)
             #expect(parts[0] == .text("Describe this"))
             if case .imageURL(let imageURL) = parts[1] {
@@ -231,7 +231,7 @@ import Foundation
         ])
         let data = try encoder.encode(original)
         let decoded = try decoder.decode(ChatCompletionMessage.self, from: data)
-        if case .userParts(let parts) = decoded {
+        if case .userParts(let parts, _) = decoded {
             #expect(parts.count == 2)
             #expect(parts[0] == .text("What's in this image?"))
             if case .imageURL(let url) = parts[1] {

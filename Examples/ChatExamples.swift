@@ -263,3 +263,89 @@ func configuringParameters(client: OpenAI) async throws {
         print("Tokens — prompt: \(usage.promptTokens), completion: \(usage.completionTokens ?? 0), total: \(usage.totalTokens)")
     }
 }
+
+// MARK: - 8. Reasoning Effort
+
+/// Demonstrates reasoning_effort control on reasoning models (o-series, gpt-5.x).
+///
+/// Lower effort = faster + cheaper; higher effort = more thorough reasoning.
+func reasoningEffortExample(client: OpenAI) async throws {
+    let response = try await client.chat.completions.create(
+        model: "gpt-5.4-nano",
+        messages: [
+            .system("You are a careful logical reasoner."),
+            .user("If 3x + 5 = 20, what is x? Show your work briefly.")
+        ],
+        reasoningEffort: .low
+    )
+
+    if let content = response.choices.first?.message.content {
+        print("Reasoning (low effort): \(content)")
+    }
+}
+
+// MARK: - 9. Streaming with Usage
+
+/// Demonstrates how to receive token usage at the end of a streaming response.
+///
+/// Set `streamOptions.includeUsage = true` — the API will emit a final chunk
+/// with `usage` populated and `choices == []`.
+func streamWithUsageExample(client: OpenAI) async throws {
+    let stream = try await client.chat.completions.createStream(
+        model: "gpt-4o-mini",
+        messages: [.user("Write a haiku about Swift.")],
+        streamOptions: ChatCompletionStreamOptions(includeUsage: true)
+    )
+
+    var lastUsage: Usage?
+    for try await chunk in stream {
+        if let usage = chunk.usage { lastUsage = usage }
+        if let delta = chunk.choices.first?.delta.content {
+            print(delta, terminator: "")
+        }
+    }
+    print()
+    if let usage = lastUsage {
+        print("[usage] prompt=\(usage.promptTokens) completion=\(usage.completionTokens ?? 0) total=\(usage.totalTokens)")
+    }
+}
+
+// MARK: - 10. Strict Function Tool
+
+/// Demonstrates strict-mode function tools using Structured Outputs to guarantee
+/// the model's tool-call arguments conform exactly to the JSON schema.
+func strictToolExample(client: OpenAI) async throws {
+    let weatherTool = ChatCompletionTool(
+        function: ChatCompletionToolFunction(
+            name: "get_weather",
+            description: "Get the current weather in a city.",
+            parameters: [
+                "type": AnyCodable("object"),
+                "properties": AnyCodable([
+                    "city": [
+                        "type": "string",
+                        "description": "City name"
+                    ],
+                    "unit": [
+                        "type": "string",
+                        "enum": ["celsius", "fahrenheit"]
+                    ]
+                ]),
+                "required": AnyCodable(["city", "unit"]),
+                "additionalProperties": AnyCodable(false)
+            ],
+            strict: true
+        )
+    )
+
+    let response = try await client.chat.completions.create(
+        model: "gpt-4o-mini",
+        messages: [.user("What's the weather in Tokyo? Use celsius.")],
+        tools: [weatherTool]
+    )
+
+    if let toolCall = response.choices.first?.message.toolCalls?.first {
+        print("Tool: \(toolCall.function.name)")
+        print("Args (strict): \(toolCall.function.arguments)")
+    }
+}

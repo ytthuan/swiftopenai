@@ -146,25 +146,38 @@ public enum TruncationStrategy: Codable, Sendable {
 }
 
 /// The service tier for processing the request.
-public enum ServiceTier: Codable, Sendable {
-    /// Default tier.
+///
+/// Conforms to `ExpressibleByStringLiteral` for backward compatibility
+/// with call sites that previously used raw `String` values.
+public enum ServiceTier: Codable, Sendable, Hashable, Equatable, ExpressibleByStringLiteral {
+    /// Automatically select the best tier.
     case auto
-    /// Default tier (alias for backward compatibility).
+    /// Default tier.
     case `default`
     /// Lower-latency tier.
     case flex
+    /// Scale tier for high-throughput workloads.
+    case scale
+    /// Priority tier for latency-sensitive workloads.
+    case priority
     /// An unknown tier returned by the API.
     case other(String)
 
-    public init(from decoder: Decoder) throws {
-        let container = try decoder.singleValueContainer()
-        let value = try container.decode(String.self)
+    public init(stringLiteral value: String) {
         switch value {
         case "auto": self = .auto
         case "default": self = .default
         case "flex": self = .flex
+        case "scale": self = .scale
+        case "priority": self = .priority
         default: self = .other(value)
         }
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let value = try container.decode(String.self)
+        self.init(stringLiteral: value)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -173,6 +186,8 @@ public enum ServiceTier: Codable, Sendable {
         case .auto: try container.encode("auto")
         case .default: try container.encode("default")
         case .flex: try container.encode("flex")
+        case .scale: try container.encode("scale")
+        case .priority: try container.encode("priority")
         case .other(let value): try container.encode(value)
         }
     }

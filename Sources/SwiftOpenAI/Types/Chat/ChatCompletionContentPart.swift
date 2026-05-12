@@ -27,7 +27,7 @@ public enum ImageMediaType: String, Sendable {
 /// - `high`: Use a higher-resolution version of the image (more detail, more tokens).
 /// - `original`: Use the original resolution of the image.
 /// - `other`: Forward-compatible case for unknown detail levels.
-public enum ImageDetail: Codable, Sendable, Equatable {
+public enum ImageDetail: Codable, Sendable, Equatable, Hashable {
     case auto
     case low
     case high
@@ -64,7 +64,7 @@ public enum ImageDetail: Codable, Sendable, Equatable {
 ///
 /// Supports both HTTP/HTTPS URLs and inline base64-encoded data URIs
 /// (e.g., `data:image/png;base64,...`).
-public struct ChatCompletionImageURL: Codable, Sendable, Equatable {
+public struct ChatCompletionImageURL: Codable, Sendable, Equatable, Hashable {
     /// The URL of the image. Can be an HTTP URL or a `data:image/...;base64,...` data URI.
     public let url: String
 
@@ -120,7 +120,7 @@ extension ChatCompletionImageURL {
 /// Wire format (type-discriminated JSON):
 /// - `.text("hello")` → `{"type": "text", "text": "hello"}`
 /// - `.imageURL(...)` → `{"type": "image_url", "image_url": {"url": "...", "detail": "high"}}`
-public enum ChatCompletionContentPart: Codable, Sendable, Equatable {
+public enum ChatCompletionContentPart: Codable, Sendable, Equatable, Hashable {
     /// A text content part.
     case text(String)
 

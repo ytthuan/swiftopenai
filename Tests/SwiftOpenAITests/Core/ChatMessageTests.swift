@@ -13,7 +13,7 @@ extension MockAPITests {
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
         let msg = try decoder.decode(ChatCompletionMessage.self, from: json.data(using: .utf8)!)
-        if case .assistant(let content, let toolCalls) = msg {
+        if case .assistant(let content, _, _, let toolCalls) = msg {
             #expect(content == nil)
             #expect(toolCalls?.count == 1)
         } else {
@@ -28,7 +28,7 @@ extension MockAPITests {
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
         let msg = try decoder.decode(ChatCompletionMessage.self, from: json.data(using: .utf8)!)
-        if case .assistant(let content, let toolCalls) = msg {
+        if case .assistant(let content, _, _, let toolCalls) = msg {
             #expect(content == "Hello")
             #expect(toolCalls == nil)
         } else {
@@ -43,7 +43,7 @@ extension MockAPITests {
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
         let msg = try decoder.decode(ChatCompletionMessage.self, from: json.data(using: .utf8)!)
-        if case .other(let role, let content) = msg {
+        if case .other(let role, let content, _) = msg {
             #expect(role == "developer")
             #expect(content == "system instructions")
         } else {
@@ -58,7 +58,7 @@ extension MockAPITests {
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
         let msg = try decoder.decode(ChatCompletionMessage.self, from: json.data(using: .utf8)!)
-        if case .other(let role, let content) = msg {
+        if case .other(let role, let content, _) = msg {
             #expect(role == "custom_role")
             #expect(content == nil)
         } else {
@@ -74,7 +74,7 @@ extension MockAPITests {
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
         let decoded = try decoder.decode(ChatCompletionMessage.self, from: data)
-        if case .other(let role, let content) = decoded {
+        if case .other(let role, let content, _) = decoded {
             #expect(role == "developer")
             #expect(content == "instructions")
         } else {
@@ -90,7 +90,7 @@ extension MockAPITests {
         let decoder = JSONDecoder()
         decoder.keyDecodingStrategy = .convertFromSnakeCase
         let decoded = try decoder.decode(ChatCompletionMessage.self, from: data)
-        if case .assistant(let content, let toolCalls) = decoded {
+        if case .assistant(let content, _, _, let toolCalls) = decoded {
             #expect(content == nil)
             #expect(toolCalls == nil)
         } else {

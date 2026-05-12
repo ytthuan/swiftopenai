@@ -41,6 +41,14 @@ public struct ChatCompletions: Sendable {
     ///   - serviceTier: Service tier.
     ///   - store: Whether to store the completion.
     ///   - metadata: Metadata key-value pairs.
+    ///   - reasoningEffort: Reasoning effort level (e.g. `.low`, `.medium`, `.high`).
+    ///   - streamOptions: Options for streaming responses (e.g. include usage).
+    ///   - verbosity: Verbosity level for model responses.
+    ///   - promptCacheKey: Key for prompt caching.
+    ///   - promptCacheRetention: Prompt cache retention policy.
+    ///   - safetyIdentifier: Safety profile identifier.
+    ///   - webSearchOptions: Web search configuration options.
+    ///   - prediction: Predicted output content for latency optimization.
     public func create(
         model: String,
         messages: [ChatCompletionMessage],
@@ -60,9 +68,17 @@ public struct ChatCompletions: Sendable {
         parallelToolCalls: Bool? = nil,
         seed: Int? = nil,
         responseFormat: ChatCompletionResponseFormat? = nil,
-        serviceTier: String? = nil,
+        serviceTier: ServiceTier? = nil,
         store: Bool? = nil,
-        metadata: [String: String]? = nil
+        metadata: [String: String]? = nil,
+        reasoningEffort: ReasoningEffort? = nil,
+        streamOptions: ChatCompletionStreamOptions? = nil,
+        verbosity: Verbosity? = nil,
+        promptCacheKey: String? = nil,
+        promptCacheRetention: PromptCacheRetention? = nil,
+        safetyIdentifier: String? = nil,
+        webSearchOptions: WebSearchOptions? = nil,
+        prediction: ChatCompletionPredictionContent? = nil
     ) async throws -> ChatCompletion {
         let params = ChatCompletionCreateParams(
             model: model,
@@ -86,7 +102,15 @@ public struct ChatCompletions: Sendable {
             responseFormat: responseFormat,
             serviceTier: serviceTier,
             store: store,
-            metadata: metadata
+            metadata: metadata,
+            reasoningEffort: reasoningEffort,
+            streamOptions: streamOptions,
+            verbosity: verbosity,
+            promptCacheKey: promptCacheKey,
+            promptCacheRetention: promptCacheRetention,
+            safetyIdentifier: safetyIdentifier,
+            webSearchOptions: webSearchOptions,
+            prediction: prediction
         )
         return try await client.post(path: "chat/completions", body: params)
     }
@@ -113,9 +137,17 @@ public struct ChatCompletions: Sendable {
         parallelToolCalls: Bool? = nil,
         seed: Int? = nil,
         responseFormat: ChatCompletionResponseFormat? = nil,
-        serviceTier: String? = nil,
+        serviceTier: ServiceTier? = nil,
         store: Bool? = nil,
-        metadata: [String: String]? = nil
+        metadata: [String: String]? = nil,
+        reasoningEffort: ReasoningEffort? = nil,
+        streamOptions: ChatCompletionStreamOptions? = nil,
+        verbosity: Verbosity? = nil,
+        promptCacheKey: String? = nil,
+        promptCacheRetention: PromptCacheRetention? = nil,
+        safetyIdentifier: String? = nil,
+        webSearchOptions: WebSearchOptions? = nil,
+        prediction: ChatCompletionPredictionContent? = nil
     ) async throws -> ServerSentEventsStream<ChatCompletionChunk> {
         let params = ChatCompletionCreateParams(
             model: model,
@@ -139,7 +171,15 @@ public struct ChatCompletions: Sendable {
             responseFormat: responseFormat,
             serviceTier: serviceTier,
             store: store,
-            metadata: metadata
+            metadata: metadata,
+            reasoningEffort: reasoningEffort,
+            streamOptions: streamOptions,
+            verbosity: verbosity,
+            promptCacheKey: promptCacheKey,
+            promptCacheRetention: promptCacheRetention,
+            safetyIdentifier: safetyIdentifier,
+            webSearchOptions: webSearchOptions,
+            prediction: prediction
         )
         return try await client.postStream(path: "chat/completions", body: params)
     }

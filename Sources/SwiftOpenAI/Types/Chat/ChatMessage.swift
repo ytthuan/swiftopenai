@@ -4,72 +4,85 @@ import Foundation
 ///
 /// Supports both simple text messages and multimodal messages with content parts
 /// (text + images) via the `.userParts` case.
-public enum ChatCompletionMessage: Codable, Sendable {
-    case system(String)
-    case user(String)
+///
+/// Every role supports an optional `name` parameter (max 64 chars) used as the
+/// sender display name. The `assistant` case also supports `refusal` for model
+/// refusal content.
+public enum ChatCompletionMessage: Codable, Sendable, Hashable {
+    case system(String, name: String? = nil)
+    case user(String, name: String? = nil)
     /// A user message composed of multiple content parts (text, images, etc.).
-    case userParts([ChatCompletionContentPart])
-    case assistant(String?, toolCalls: [ChatCompletionToolCall]? = nil)
-    case tool(String, toolCallId: String)
-    case other(role: String, content: String?)
+    case userParts([ChatCompletionContentPart], name: String? = nil)
+    case assistant(String?, name: String? = nil, refusal: String? = nil, toolCalls: [ChatCompletionToolCall]? = nil)
+    case tool(String, toolCallId: String, name: String? = nil)
+    case other(role: String, content: String? = nil, name: String? = nil)
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let role = try container.decode(String.self, forKey: .role)
+        let name = try container.decodeIfPresent(String.self, forKey: .name)
         switch role {
         case "system":
             let content = try container.decode(String.self, forKey: .content)
-            self = .system(content)
+            self = .system(content, name: name)
         case "user":
             if let content = try? container.decode(String.self, forKey: .content) {
-                self = .user(content)
+                self = .user(content, name: name)
             } else if let parts = try? container.decode([ChatCompletionContentPart].self, forKey: .content) {
-                self = .userParts(parts)
+                self = .userParts(parts, name: name)
             } else {
-                self = .user("")
+                self = .user("", name: name)
             }
         case "assistant":
             let content = try container.decodeIfPresent(String.self, forKey: .content)
+            let refusal = try container.decodeIfPresent(String.self, forKey: .refusal)
             let toolCalls = try container.decodeIfPresent([ChatCompletionToolCall].self, forKey: .toolCalls)
-            self = .assistant(content, toolCalls: toolCalls)
+            self = .assistant(content, name: name, refusal: refusal, toolCalls: toolCalls)
         case "tool":
             let content = try container.decode(String.self, forKey: .content)
             let toolCallId = try container.decode(String.self, forKey: .toolCallId)
-            self = .tool(content, toolCallId: toolCallId)
+            self = .tool(content, toolCallId: toolCallId, name: name)
         default:
             let content = try container.decodeIfPresent(String.self, forKey: .content)
-            self = .other(role: role, content: content)
+            self = .other(role: role, content: content, name: name)
         }
     }
 
     public func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         switch self {
-        case .system(let content):
+        case .system(let content, let name):
             try container.encode("system", forKey: .role)
             try container.encode(content, forKey: .content)
-        case .user(let content):
+            try container.encodeIfPresent(name, forKey: .name)
+        case .user(let content, let name):
             try container.encode("user", forKey: .role)
             try container.encode(content, forKey: .content)
-        case .userParts(let parts):
+            try container.encodeIfPresent(name, forKey: .name)
+        case .userParts(let parts, let name):
             try container.encode("user", forKey: .role)
             try container.encode(parts, forKey: .content)
-        case .assistant(let content, let toolCalls):
+            try container.encodeIfPresent(name, forKey: .name)
+        case .assistant(let content, let name, let refusal, let toolCalls):
             try container.encode("assistant", forKey: .role)
             try container.encodeIfPresent(content, forKey: .content)
+            try container.encodeIfPresent(name, forKey: .name)
+            try container.encodeIfPresent(refusal, forKey: .refusal)
             try container.encodeIfPresent(toolCalls, forKey: .toolCalls)
-        case .tool(let content, let toolCallId):
+        case .tool(let content, let toolCallId, let name):
             try container.encode("tool", forKey: .role)
             try container.encode(content, forKey: .content)
             try container.encode(toolCallId, forKey: .toolCallId)
-        case .other(let role, let content):
+            try container.encodeIfPresent(name, forKey: .name)
+        case .other(let role, let content, let name):
             try container.encode(role, forKey: .role)
             try container.encodeIfPresent(content, forKey: .content)
+            try container.encodeIfPresent(name, forKey: .name)
         }
     }
 
     private enum CodingKeys: String, CodingKey {
-        case role, content, toolCalls, toolCallId
+        case role, content, name, refusal, toolCalls, toolCallId
     }
 
     // MARK: - Convenience Initializers
@@ -140,7 +153,7 @@ public enum ChatCompletionMessage: Codable, Sendable {
 }
 
 /// A tool call made by the assistant.
-public struct ChatCompletionToolCall: Codable, Sendable {
+public struct ChatCompletionToolCall: Codable, Sendable, Hashable {
     public let id: String
     public let type: String
     public let function: FunctionCall
@@ -153,7 +166,7 @@ public struct ChatCompletionToolCall: Codable, Sendable {
 }
 
 /// A function call within a tool call.
-public struct FunctionCall: Codable, Sendable {
+public struct FunctionCall: Codable, Sendable, Hashable {
     public let name: String
     public let arguments: String
 

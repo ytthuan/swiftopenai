@@ -36,7 +36,7 @@ Add SwiftOpenAI to your `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/ytthuan/swiftopenai.git", from: "0.9.0")
+    .package(url: "https://github.com/ytthuan/swiftopenai.git", from: "0.10.0")
 ]
 ```
 
@@ -1277,6 +1277,89 @@ let completion = try await client.chat.completions.create(
         ],
         strict: true
     ))
+)
+```
+
+### Reasoning Effort
+
+For reasoning models (o-series, gpt-5.x), control how much "thinking" the model does
+before responding. Lower = faster + cheaper; higher = more thorough.
+
+```swift
+let completion = try await client.chat.completions.create(
+    model: "gpt-5.4-nano",
+    messages: [
+        .system(content: "You are a careful logical reasoner."),
+        .user(content: "If 3x + 5 = 20, what is x?")
+    ],
+    reasoningEffort: .low  // .disabled | .minimal | .low | .medium | .high | .xhigh
+)
+```
+
+### Streaming with Usage
+
+To receive token usage at the end of a stream, set `streamOptions.includeUsage = true`.
+The API emits a final chunk with `usage` populated and `choices == []`.
+
+```swift
+let stream = try await client.chat.completions.createStream(
+    model: "gpt-4o-mini",
+    messages: [.user(content: "Write a haiku about Swift.")],
+    streamOptions: ChatCompletionStreamOptions(includeUsage: true)
+)
+var lastUsage: Usage?
+for try await chunk in stream {
+    if let usage = chunk.usage { lastUsage = usage }
+    if let text = chunk.choices.first?.delta.content {
+        print(text, terminator: "")
+    }
+}
+print("\n[tokens] \(lastUsage?.totalTokens ?? 0)")
+```
+
+### Strict Function Tools
+
+Set `strict: true` on a function tool to enable Structured Outputs — the model's
+tool-call arguments are guaranteed to conform exactly to the JSON schema.
+
+```swift
+let weatherTool = ChatCompletionTool(
+    function: ChatCompletionToolFunction(
+        name: "get_weather",
+        description: "Get the current weather in a city.",
+        parameters: [
+            "type": AnyCodable("object"),
+            "properties": AnyCodable([
+                "city": ["type": "string", "description": "City name"],
+                "unit": ["type": "string", "enum": ["celsius", "fahrenheit"]]
+            ]),
+            "required": AnyCodable(["city", "unit"]),
+            "additionalProperties": AnyCodable(false)
+        ],
+        strict: true
+    )
+)
+
+let completion = try await client.chat.completions.create(
+    model: "gpt-4o-mini",
+    messages: [.user(content: "Weather in Tokyo, celsius?")],
+    tools: [weatherTool]
+)
+```
+
+### Web Search Options (Chat Completions)
+
+For chat models that support inline web search (e.g. `gpt-4o-search-preview`),
+enable it via `webSearchOptions`.
+
+```swift
+let completion = try await client.chat.completions.create(
+    model: "gpt-4o-search-preview",
+    messages: [.user(content: "Latest Swift release notes?")],
+    webSearchOptions: WebSearchOptions(
+        searchContextSize: .high,
+        userLocation: .init(approximate: .init(city: "Berlin", country: "DE"))
+    )
 )
 ```
 
