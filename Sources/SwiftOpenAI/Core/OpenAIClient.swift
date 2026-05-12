@@ -198,6 +198,8 @@ extension OpenAI {
     ///   - endpointSuffix: Override endpoint domain. Default: `openai.azure.com`.
     ///   - timeoutInterval: Request timeout in seconds. Default: 600.
     ///   - maxRetries: Maximum retries for failed requests. Default: 2.
+    ///   - maxMultipartPartSize: Maximum bytes for any single multipart part. Default: 512 MB.
+    ///   - maxMultipartBodySize: Maximum bytes for the assembled multipart body. Default: 1 GB.
     ///   - session: Optional custom URLSession.
     public static func azure(
         resourceName: String,
@@ -205,6 +207,8 @@ extension OpenAI {
         endpointSuffix: String = "openai.azure.com",
         timeoutInterval: TimeInterval = 600,
         maxRetries: Int = 2,
+        maxMultipartPartSize: Int = 512 * 1024 * 1024,
+        maxMultipartBodySize: Int = 1024 * 1024 * 1024,
         session: URLSession? = nil
     ) -> OpenAI {
         let hostnamePattern = /^[A-Za-z0-9]([A-Za-z0-9.\-]*[A-Za-z0-9])?$/
@@ -228,6 +232,8 @@ extension OpenAI {
             timeoutInterval: timeoutInterval,
             maxRetries: maxRetries,
             apiKeyHeaderName: "api-key",
+            maxMultipartPartSize: maxMultipartPartSize,
+            maxMultipartBodySize: maxMultipartBodySize,
             session: session
         )
     }
@@ -264,6 +270,8 @@ extension OpenAI {
     ///   - apiVersion: Azure API version. Default: `2025-11-15-preview`.
     ///   - timeoutInterval: Request timeout in seconds. Default: 600.
     ///   - maxRetries: Maximum retries. Default: 2.
+    ///   - maxMultipartPartSize: Maximum bytes for any single multipart part. Default: 512 MB.
+    ///   - maxMultipartBodySize: Maximum bytes for the assembled multipart body. Default: 1 GB.
     ///   - session: Optional custom URLSession.
     public static func azureFoundry(
         endpoint: String,
@@ -273,6 +281,8 @@ extension OpenAI {
         apiVersion: String = "2025-11-15-preview",
         timeoutInterval: TimeInterval = 600,
         maxRetries: Int = 2,
+        maxMultipartPartSize: Int = 512 * 1024 * 1024,
+        maxMultipartBodySize: Int = 1024 * 1024 * 1024,
         session: URLSession? = nil
     ) -> OpenAI {
         let cleanEndpoint = endpoint.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
@@ -292,6 +302,8 @@ extension OpenAI {
             maxRetries: maxRetries,
             defaultQueryItems: [URLQueryItem(name: "api-version", value: apiVersion)],
             tokenProvider: tokenProvider,
+            maxMultipartPartSize: maxMultipartPartSize,
+            maxMultipartBodySize: maxMultipartBodySize,
             session: session
         )
     }
@@ -316,6 +328,8 @@ extension OpenAI {
     ///   - apiVersion: Azure API version. Default: `2025-11-15-preview`.
     ///   - timeoutInterval: Request timeout in seconds. Default: 600.
     ///   - maxRetries: Maximum retries. Default: 2.
+    ///   - maxMultipartPartSize: Maximum bytes for any single multipart part. Default: 512 MB.
+    ///   - maxMultipartBodySize: Maximum bytes for the assembled multipart body. Default: 1 GB.
     ///   - session: Optional custom URLSession.
     public static func azureFoundry(
         endpoint: String,
@@ -323,6 +337,8 @@ extension OpenAI {
         apiVersion: String = "2025-11-15-preview",
         timeoutInterval: TimeInterval = 600,
         maxRetries: Int = 2,
+        maxMultipartPartSize: Int = 512 * 1024 * 1024,
+        maxMultipartBodySize: Int = 1024 * 1024 * 1024,
         session: URLSession? = nil
     ) -> OpenAI {
         let cleanEndpoint = endpoint.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
@@ -335,6 +351,8 @@ extension OpenAI {
             maxRetries: maxRetries,
             defaultQueryItems: [URLQueryItem(name: "api-version", value: apiVersion)],
             tokenProvider: StaticTokenProvider(token: token),
+            maxMultipartPartSize: maxMultipartPartSize,
+            maxMultipartBodySize: maxMultipartBodySize,
             session: session
         )
     }

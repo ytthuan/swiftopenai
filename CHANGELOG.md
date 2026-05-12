@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.10.2] — 2026-05-12
+
+### Fixed
+
+- **F-06 (multipart limits, Azure convenience inits)** — `OpenAI.azure(...)`, `OpenAI.azureFoundry(endpoint:tenantId:...)`, and `OpenAI.azureFoundry(endpoint:token:...)` now forward `maxMultipartPartSize` and `maxMultipartBodySize` to the primary `OpenAI.init`. Parameters are defaulted (512 MB / 1 GB) so the change is fully backward-compatible. Closes the gap from v0.10.1 where iOS/watchOS adopters using Azure convenience inits could not customize multipart size limits. 4 unit tests added.
+
+### Added
+
+- `.github/dependabot.yml` — automates `github-actions` and `swift` package update PRs (weekly cadence); `open-pull-requests-limit: 5` per ecosystem.
+- `.github/workflows/digest-refresh.yml` — monthly cron + `workflow_dispatch` that opens a PR to refresh the `swift:6.0@sha256:...` Linux container image digest pin in `ci.yml`. Required because Dependabot's `docker` ecosystem does not support GitHub Actions `container:` image fields.
+- `scripts/check-coverage.sh` — parses SwiftPM LLVM coverage JSON via `jq`; `--threshold`/`--tolerance` flags; exits non-zero on regression; posts markdown summary to `$GITHUB_STEP_SUMMARY`.
+- `scripts/live-proxy-test.sh` — reads `$SWIFTOPENAI_LIVE_PROXY` (default `/tmp/pibochat-live-proxy.json`); skip-if-absent (exit 0) for CI; otherwise scaffolds a temp Swift Package executable and runs 11 Core + Responses scenarios.
+- CI coverage gate — new `coverage` job in `.github/workflows/ci.yml` (macOS); no-regression threshold `67`, tolerance `0.5` (effective floor 66.5%). Linux job untouched.
+- 53 new tests (347 → 400) across 4 files: `ChatCompletionTypeTests.swift`, `APIErrorTests.swift`, `TokenProviderTests.swift`, `CodableRoundTripTests.swift`.
+
+### Quality
+
+- Test coverage: 62.6% → **67.0%**. `ChatCompletion.swift`, `APIError.swift`, `CompletionTypes.swift`, `EmbeddingTypes.swift` now at 100%; `TokenProvider.swift` at 94.8%.
+
+### Audit
+
+- `JSONDecoder` `@unchecked Sendable` follow-up (flagged in v0.10.1) closed as **NOT-REPRODUCIBLE** — `JSONDecoder` is `@unchecked Sendable` on both Apple Foundation and Linux swift-corelibs-foundation; the static `let decoder` pattern in `HTTPClient` is the canonical safe approach. No code change needed.
+- **S-02 (digest-refresh.yml)** — fixed deterministic branch-name collision on same-day `workflow_dispatch` re-run by switching `git checkout -b` → `git checkout -B` (force-create-or-reset).
+
 ## [0.10.1] — 2026-05-12
 
 ### Security
@@ -25,6 +49,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Audit
 
 - L6 deferred audit closure: line-by-line review of all custom `Codable` implementations under `Sources/SwiftOpenAI/Types/Chat/` and `Sources/SwiftOpenAI/Types/Responses/` (12 files, 7 with custom codecs). All polymorphic decoders use safe `default: .other(value)` fallback or explicit `throw`. No medium-or-higher findings. Three low-correctness observations noted but below the suppression bar established in the original Codex scan.
+
+## [0.10.0] — 2026-05-12
+
+### Added
+
+- `ChatCompletionCreateParams.reasoningEffort` — `.disabled / .minimal / .low / .medium / .high / .xhigh / .other`
+- `ChatCompletionCreateParams.streamOptions` — `includeUsage` and `includeObfuscation`; wired through `createStream`
+- `ChatCompletionCreateParams.verbosity` — `.low / .medium / .high / .other`
+- `ChatCompletionCreateParams.promptCacheKey`, `promptCacheRetention` (`.inMemory / .h24 / .other`), `safetyIdentifier`
+- `ChatCompletionCreateParams.webSearchOptions` — `searchContextSize` + nested `user_location.approximate`
+- `ChatCompletionCreateParams.prediction` — speculative decoding hint
+- `ChatCompletionToolFunction.strict: Bool?` — enables Structured Outputs enforcement on function tools
+- `ChatCompletionCustomTool` — new custom tool type with `.text / .grammar(.lark | .regex)` formats
+- `ChatCompletionToolChoice.custom(name:)` and `.allowedTools(mode:tools:)` cases
+- `ServiceTier` promoted from `String?` to a typed enum with `ExpressibleByStringLiteral`
+
+### Changed
+
+- `ChatCompletionTool` refactored from struct to enum (`.function | .custom`). Backward-compatible `init(function:)` and computed accessors (`type`, `function`, `custom`) preserved for source compatibility with v0.9.x call sites.
+
+### Breaking
+
+- `ChatCompletionMessage` enum cases gained `name: String?` on every role; the `.assistant` case also gained `refusal: String?`. Construction remains source-compatible (defaults). **Pattern-matching call sites (e.g. `if case .system(let x)`) now bind `x` as a tuple — callers must add `_` for the new fields.**
+
+### Quality
+
+- Live-tested against `gpt-5.4-nano`. 321 tests pass.
 
 ## [0.8.0] — 2026-04-16
 
@@ -190,7 +241,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CI/CD workflows (GitHub Actions) with Swift build and test pipelines
 - Comprehensive usage examples in `Examples/`
 
-[Unreleased]: https://github.com/ytthuan/swiftopenai/compare/v0.10.1...HEAD
+[Unreleased]: https://github.com/ytthuan/swiftopenai/compare/v0.10.2...HEAD
+[0.10.2]: https://github.com/ytthuan/swiftopenai/compare/v0.10.1...v0.10.2
 [0.10.1]: https://github.com/ytthuan/swiftopenai/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/ytthuan/swiftopenai/compare/v0.8.0...v0.10.0
 [0.8.0]: https://github.com/ytthuan/swiftopenai/compare/v0.7.0...v0.8.0

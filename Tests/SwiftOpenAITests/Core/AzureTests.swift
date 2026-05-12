@@ -99,6 +99,60 @@ import FoundationNetworking
         #expect(client.configuration.tokenProvider != nil)
         #expect(client.configuration.defaultQueryItems.first?.name == "api-version")
     }
+
+    // MARK: - Multipart Limit Forwarding
+
+    @Test func azureConvenienceInitForwardsMultipartLimits() {
+        let client = OpenAI.azure(
+            resourceName: "my-resource",
+            apiKey: "test-key",
+            maxMultipartPartSize: 64 * 1024 * 1024,
+            maxMultipartBodySize: 128 * 1024 * 1024
+        )
+        #expect(client.configuration.maxMultipartPartSize == 64 * 1024 * 1024)
+        #expect(client.configuration.maxMultipartBodySize == 128 * 1024 * 1024)
+    }
+
+    @Test func azureFoundryEntraIdConvenienceInitForwardsMultipartLimits() {
+        let client = OpenAI.azureFoundry(
+            endpoint: "https://myaccount.services.ai.azure.com/api/projects/myproject",
+            tenantId: "t",
+            clientId: "c",
+            clientSecret: "s",
+            maxMultipartPartSize: 32 * 1024 * 1024,
+            maxMultipartBodySize: 64 * 1024 * 1024
+        )
+        #expect(client.configuration.maxMultipartPartSize == 32 * 1024 * 1024)
+        #expect(client.configuration.maxMultipartBodySize == 64 * 1024 * 1024)
+    }
+
+    @Test func azureFoundryTokenConvenienceInitForwardsMultipartLimits() {
+        let client = OpenAI.azureFoundry(
+            endpoint: "https://myaccount.services.ai.azure.com/api/projects/myproject",
+            token: "eyJ0eXAi...",
+            maxMultipartPartSize: 16 * 1024 * 1024,
+            maxMultipartBodySize: 48 * 1024 * 1024
+        )
+        #expect(client.configuration.maxMultipartPartSize == 16 * 1024 * 1024)
+        #expect(client.configuration.maxMultipartBodySize == 48 * 1024 * 1024)
+    }
+
+    @Test func azureConvenienceInitsDefaultMultipartLimits() {
+        let azureClient = OpenAI.azure(resourceName: "r", apiKey: "k")
+        let foundryEntraClient = OpenAI.azureFoundry(
+            endpoint: "https://x.services.ai.azure.com/api/projects/p",
+            tenantId: "t", clientId: "c", clientSecret: "s"
+        )
+        let foundryTokenClient = OpenAI.azureFoundry(
+            endpoint: "https://x.services.ai.azure.com/api/projects/p",
+            token: "tok"
+        )
+
+        for client in [azureClient, foundryEntraClient, foundryTokenClient] {
+            #expect(client.configuration.maxMultipartPartSize == 512 * 1024 * 1024)
+            #expect(client.configuration.maxMultipartBodySize == 1024 * 1024 * 1024)
+        }
+    }
 }
 
 @Suite struct TokenProviderTests {

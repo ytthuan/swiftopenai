@@ -1,0 +1,44 @@
+# Dependabot version-update configuration for SwiftOpenAI
+#
+# NOTE: `package-ecosystem: "docker"` is intentionally OMITTED.
+# Dependabot's docker ecosystem only scans Dockerfile and docker-compose.yml.
+# It does NOT update `container: swift:6.0@sha256:...` references inside
+# GitHub Actions workflow YAML (confirmed against official docs, 2026-05-12).
+# The `container:` digest in .github/workflows/ci.yml is instead refreshed
+# by the scheduled workflow at .github/workflows/digest-refresh.yml, which
+# opens a PR monthly via `gh pr create`.
+#
+# Supported ecosystems here:
+#   1. github-actions  — keeps `uses: actions/foo@sha` pins current (weekly)
+#   2. swift           — future-proofing for when Package.swift has real deps (weekly)
+
+version: 2
+
+updates:
+  # ── GitHub Actions versions ────────────────────────────────────────────────
+  # Updates `uses: owner/action@sha # vX.Y.Z` pins in all workflow files.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "github-actions"
+    commit-message:
+      prefix: "ci"
+
+  # ── Swift Package Manager ──────────────────────────────────────────────────
+  # SwiftOpenAI currently has zero external dependencies (Package.swift).
+  # This entry is here for future-proofing: the moment a dep is added, weekly
+  # PRs will appear automatically.
+  - package-ecosystem: "swift"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "swift"
+    commit-message:
+      prefix: "deps"

@@ -1,0 +1,84 @@
+name: Refresh Swift Container Digest
+
+# Monthly digest-pin refresh for the swift:6.0 container image used in the
+# Linux CI job (ci.yml). Dependabot's `docker` ecosystem only scans Dockerfile
+# and docker-compose.yml; it does NOT update `container:` image references in
+# GitHub Actions workflow YAML (confirmed 2026-05-12). This workflow fills that gap.
+#
+# Procedure:
+#   1. Pull swift:6.0 from Docker Hub to resolve the current manifest digest.
+#   2. If the digest has changed, update the `container:` line in ci.yml.
+#   3. Push a branch and open a PR for human review — no auto-merge.
+#
+# Refresh cadence: 1st of each month at 06:00 UTC, matching the comment in ci.yml
+# ("quarterly OR on Swift point release, whichever comes first"). Monthly polling
+# ensures we never miss a point release by more than ~30 days.
+
+on:
+  schedule:
+    - cron: "0 6 1 * *"   # monthly, 1st of month, 06:00 UTC
+  workflow_dispatch:        # allow manual trigger
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  refresh-swift-digest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Look up latest swift:6.0 digest
+        id: digest
+        run: |
+          docker pull swift:6.0
+          NEW_DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' swift:6.0)
+          echo "new_digest=$NEW_DIGEST" >> "$GITHUB_OUTPUT"
+
+      - name: Update ci.yml if digest has changed
+        run: |
+          NEW_DIGEST="${{ steps.digest.outputs.new_digest }}"
+          # Extract the sha256:... portion only (strip leading "docker.io/library/swift@" etc.)
+          NEW_SHA="${NEW_DIGEST#*@}"
+
+          # Rewrite the pinned digest line in ci.yml (BRE: \{64\} = exactly 64 hex chars)
+          sed -i "s|container: swift:6.0@sha256:[a-f0-9]\\{64\\}|container: swift:6.0@${NEW_SHA}|" \
+            .github/workflows/ci.yml
+
+          if git diff --quiet; then
+            echo "Digest unchanged — no PR needed."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          BRANCH="ci/refresh-swift-digest-$(date +%Y%m%d)"
+          # Use -B (force-create-or-reset) so a same-day re-run via workflow_dispatch
+          # doesn't fail when the branch already exists. See S-02 from W4 bug-finder audit (v0.10.2).
+          git checkout -B "$BRANCH"
+          git add .github/workflows/ci.yml
+          git commit -m "ci(linux): refresh swift:6.0 digest pin (${NEW_SHA})"
+
+          git push origin "$BRANCH"
+
+          PR_BODY="## Automated digest refresh
+
+          Opened by the monthly \`digest-refresh.yml\` workflow.
+
+          **New digest:** \`${NEW_SHA}\`
+
+          ### Review checklist
+          - [ ] Confirm \`swift:6.0\` still resolves to a Swift 6.0.x image (not 6.1+)
+          - [ ] Confirm CI passes on this branch before merging
+          - [ ] No auto-merge — human approval required"
+
+          gh pr create \
+            --title "ci(linux): refresh swift:6.0 digest pin" \
+            --body "${PR_BODY}" \
+            --label "dependencies,ci" \
+            --base main \
+            --head "$BRANCH"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -31,6 +31,27 @@ jobs:
       - name: Test
         run: swift test
 
+  coverage:
+    name: Coverage Gate (macOS)
+    runs-on: macos-15
+    needs: macos
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Cache SPM
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: .build
+          key: ${{ runner.os }}-spm-${{ hashFiles('Package.resolved', 'Package.swift') }}
+          restore-keys: |
+            ${{ runner.os }}-spm-
+      - name: Test with coverage
+        run: swift test --enable-code-coverage
+      - name: Check coverage gate
+        # Threshold = post-W3 measured coverage (67.0%) rounded down to nearest integer = 67, minus 0.5% tolerance = effective floor 66.5%.
+        # Original v0.10.1 baseline was 62.6%; v0.10.2 raised it to 67.0% via gap-targeted test additions.
+        # Refresh after coverage-improving PRs by editing the --threshold flag below.
+        run: bash scripts/check-coverage.sh --threshold 67 --tolerance 0.5 --summary-out "$GITHUB_STEP_SUMMARY"
+
   linux:
     name: Linux (Swift 6.0)
     runs-on: ubuntu-latest
