@@ -275,8 +275,26 @@ public struct ResponseUsage: Codable, Sendable {
     public let outputTokens: Int
     /// The total number of tokens used.
     public let totalTokens: Int
+    /// Details about input token usage.
+    public let inputTokensDetails: InputTokensDetails?
     /// Details about output token usage.
     public let outputTokensDetails: OutputTokensDetails?
+
+    /// Detailed breakdown of input token usage.
+    public struct InputTokensDetails: Codable, Sendable {
+        /// The number of tokens that were retrieved from the prompt cache.
+        ///
+        /// See [prompt caching](https://platform.openai.com/docs/guides/prompt-caching).
+        public let cachedTokens: Int?
+
+        private enum CodingKeys: String, CodingKey {
+            case cachedTokens
+        }
+
+        public init(cachedTokens: Int? = nil) {
+            self.cachedTokens = cachedTokens
+        }
+    }
 
     /// Detailed breakdown of output token usage.
     public struct OutputTokensDetails: Codable, Sendable {
@@ -286,10 +304,28 @@ public struct ResponseUsage: Codable, Sendable {
         private enum CodingKeys: String, CodingKey {
             case reasoningTokens
         }
+
+        public init(reasoningTokens: Int? = nil) {
+            self.reasoningTokens = reasoningTokens
+        }
     }
 
     private enum CodingKeys: String, CodingKey {
-        case inputTokens, outputTokens, totalTokens, outputTokensDetails
+        case inputTokens, outputTokens, totalTokens, inputTokensDetails, outputTokensDetails
+    }
+
+    public init(
+        inputTokens: Int,
+        outputTokens: Int,
+        totalTokens: Int,
+        inputTokensDetails: InputTokensDetails? = nil,
+        outputTokensDetails: OutputTokensDetails? = nil
+    ) {
+        self.inputTokens = inputTokens
+        self.outputTokens = outputTokens
+        self.totalTokens = totalTokens
+        self.inputTokensDetails = inputTokensDetails
+        self.outputTokensDetails = outputTokensDetails
     }
 }
 
