@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.11.0] — 2026-07-02
+
+### Added
+
+- **Prompt-cache token details in usage** (#9) — token-usage types now surface the OpenAI prompt-caching breakdowns the API returns, which the SDK previously dropped on decode:
+  - Shared `Usage` (Chat Completions, streaming `ChatCompletionChunk`, legacy Completions) gains `promptTokensDetails` (`cachedTokens`, `audioTokens`) and `completionTokensDetails` (`reasoningTokens`, `audioTokens`, `acceptedPredictionTokens`, `rejectedPredictionTokens`), mirroring openai-python `CompletionUsage`.
+  - `ResponseUsage` (Responses API) gains `inputTokensDetails` (`cachedTokens`), mirroring openai-python `ResponseUsage.InputTokensDetails`.
+  - Access cache hits for cost tracking via `completion.usage?.promptTokensDetails?.cachedTokens` (Chat) and `response.usage?.inputTokensDetails?.cachedTokens` (Responses).
+  - 6 unit tests added (`UsageCachedTokensTests`) covering decode, streaming exposure, backward-compatible nil-when-absent, and round-trip.
+
+### Notes
+
+- Fully backward-compatible: all new fields are optional and public inits default them to `nil`, so existing `Usage(promptTokens:completionTokens:totalTokens:)` call sites keep compiling and responses without detail objects decode with `nil` details.
+
 ## [0.10.2] — 2026-05-12
 
 ### Fixed
