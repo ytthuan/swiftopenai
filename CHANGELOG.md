@@ -30,7 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `.github/dependabot.yml` — automates `github-actions` and `swift` package update PRs (weekly cadence); `open-pull-requests-limit: 5` per ecosystem.
 - `.github/workflows/digest-refresh.yml` — monthly cron + `workflow_dispatch` that opens a PR to refresh the `swift:6.0@sha256:...` Linux container image digest pin in `ci.yml`. Required because Dependabot's `docker` ecosystem does not support GitHub Actions `container:` image fields.
 - `scripts/check-coverage.sh` — parses SwiftPM LLVM coverage JSON via `jq`; `--threshold`/`--tolerance` flags; exits non-zero on regression; posts markdown summary to `$GITHUB_STEP_SUMMARY`.
-- `scripts/live-proxy-test.sh` — reads `$SWIFTOPENAI_LIVE_PROXY` (default `/tmp/pibochat-live-proxy.json`); skip-if-absent (exit 0) for CI; otherwise scaffolds a temp Swift Package executable and runs 11 Core + Responses scenarios.
+- `scripts/live-proxy-test.sh` — reads `$SWIFTOPENAI_LIVE_PROXY` (default `/tmp/swiftopenai-live-proxy.json`); skip-if-absent (exit 0) for CI; otherwise scaffolds a temp Swift Package executable and runs 11 Core + Responses scenarios.
 - CI coverage gate — new `coverage` job in `.github/workflows/ci.yml` (macOS); no-regression threshold `67`, tolerance `0.5` (effective floor 66.5%). Linux job untouched.
 - 53 new tests (347 → 400) across 4 files: `ChatCompletionTypeTests.swift`, `APIErrorTests.swift`, `TokenProviderTests.swift`, `CodableRoundTripTests.swift`.
 

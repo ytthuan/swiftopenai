@@ -3,7 +3,7 @@
 # scripts/live-proxy-test.sh
 # SwiftOpenAI — optional live-proxy smoke tests.
 #
-# Reads $SWIFTOPENAI_LIVE_PROXY (default: /tmp/pibochat-live-proxy.json) for
+# Reads $SWIFTOPENAI_LIVE_PROXY (default: /tmp/swiftopenai-live-proxy.json) for
 # connection details, then scaffolds a temporary Swift executable that imports
 # SwiftOpenAI and exercises 11 SDK scenarios.
 #
@@ -33,7 +33,7 @@
 
 set -euo pipefail
 
-PROXY_CONFIG="${SWIFTOPENAI_LIVE_PROXY:-/tmp/pibochat-live-proxy.json}"
+PROXY_CONFIG="${SWIFTOPENAI_LIVE_PROXY:-/tmp/swiftopenai-live-proxy.json}"
 ORIGINAL_PWD="$(pwd)"
 RUNNER=""
 
@@ -130,7 +130,7 @@ struct ProxyConfig: Codable, Sendable {
 
 func loadConfig() throws -> ProxyConfig {
     let path = ProcessInfo.processInfo.environment["SWIFTOPENAI_LIVE_PROXY"]
-        ?? "/tmp/pibochat-live-proxy.json"
+        ?? "/tmp/swiftopenai-live-proxy.json"
     let data = try Data(contentsOf: URL(fileURLWithPath: path))
     return try JSONDecoder().decode(ProxyConfig.self, from: data)
 }
