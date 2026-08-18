@@ -16,7 +16,7 @@
 /// Central version constants for the SwiftOpenAI SDK.
 public enum SDK: Sendable {
     /// The current SDK version.
-    public static let version = "0.11.0"
+    public static let version = "0.12.0"
     /// The User-Agent header value sent with every request.
     public static let userAgent = "SwiftOpenAI/\(version)"
 }

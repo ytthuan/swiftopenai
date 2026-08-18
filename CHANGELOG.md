@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## v0.12.0 — 2026-08-19
+
+### Added
+
+- **GPT-5.6 request parity** (#12) — documented schema-verified use of the unrestricted `gpt-5.6-sol`, `gpt-5.6-terra`, and `gpt-5.6-luna` model IDs without model gating or aliases.
+- Additive Chat Completions and Responses request-object APIs preserve existing enum cases and method signatures while exposing prompt-cache options and explicit breakpoints.
+- Responses requests now represent reasoning configuration and echoes, file-input detail, and compact continuation with encrypted-content round trips.
+
+### Changed
+
+- Responses WebSocket state handling now hardens receive ownership, cancellation cleanup, and sequential request handling.
+- Documentation and parity, Codable, source-compatibility, and deterministic WebSocket tests cover the new request surfaces.
+
+### Notes
+
+- This release is source-compatible: the GPT-5.6 request surfaces are additive and existing call sites remain valid.
+- Live `responses/compact` validation remains blocked by an external local proxy adapter that rejects an unknown `metadata` field even though the SDK request does not emit it. Schema and mocked compact round-trip tests pass; this is an external adapter caveat, not an SDK defect.
+
 ## [0.11.0] — 2026-07-02
 
 ### Added

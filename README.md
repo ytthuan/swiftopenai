@@ -37,7 +37,7 @@ Add SwiftOpenAI to your `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/ytthuan/swiftopenai.git", from: "0.11.0")
+    .package(url: "https://github.com/ytthuan/swiftopenai.git", from: "0.12.0")
 ]
 ```
 
