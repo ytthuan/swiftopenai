@@ -320,3 +320,107 @@ func conversationsWithResponses() async throws {
     )
     print("Saved conversation history to \(conversation.id)")
 }
+
+// MARK: - 11. Request Object with File Input, Cache Options, and Reasoning
+
+/// Demonstrates the request-object overload `create(request:)`.
+///
+/// `ResponseCreateRequest.model` is a plain `String`, so newer model IDs — such
+/// as `"gpt-5.6-sol"`, `"gpt-5.6-terra"`, or `"gpt-5.6-luna"` — are opt-in and
+/// need no SDK change. The existing `create(model:input:...)` overload also
+/// accepts any model ID; the request wrapper exists so evolving content shapes
+/// (here, `input_file` detail and `prompt_cache_breakpoint`) can be sent without
+/// widening the legacy `ResponseInput` / `ResponseInputContentPart` enums.
+///
+/// SwiftOpenAI verifies that these fields serialize to the documented request
+/// schema. Whether a given model ID actually runs is decided by your account,
+/// region, and model access.
+func requestObjectWithFileAndReasoning() async throws {
+    let client = makeClient()
+
+    // `effort` and `mode` are unrestricted strings, forwarded verbatim when set.
+    let reasoningMode = ProcessInfo.processInfo.environment["OPENAI_REASONING_MODE"]
+
+    let request = ResponseCreateRequest(
+        model: "gpt-5.6-terra",
+        input: .messages([
+            .user(parts: [
+                // The uploaded document is the reusable prefix for this workflow.
+                .inputFile(
+                    id: "file-abc123",
+                    detail: .high,                       // .auto, .low, .high, .other(String)
+                    promptCacheBreakpoint: PromptCacheBreakpoint()
+                ),
+                .inputText("Summarize the attached contract in five bullets.")
+            ])
+        ]),
+        options: ResponseCreateOptions(
+            reasoning: .full(
+                effort: "high",
+                context: .allTurns,                      // .auto, .currentTurn, .allTurns
+                mode: reasoningMode,
+                summary: .detailed                       // .auto, .concise, .detailed
+            ),
+            promptCacheKey: "contract-review-v1",
+            // `.m30` encodes the "30m" minimum cache lifetime.
+            promptCacheOptions: PromptCacheOptions(mode: .explicit, ttl: .m30)
+        )
+    )
+
+    let response = try await client.responses.create(request: request)
+    print(response.outputText ?? "")
+
+    if let cached = response.usage?.inputTokensDetails?.cachedTokens {
+        print("Cached input tokens: \(cached)")
+    }
+
+    // `createStream(request:)` is the streaming counterpart of the same request.
+}
+
+// MARK: - 12. Compaction Round-Trip with Cache Options
+
+/// Compacts a long conversation with `compact(request:)`, then feeds the
+/// encrypted compaction item back as input on the next turn.
+///
+/// The compact endpoint does not accept reasoning configuration, so
+/// `ResponseCompactRequest` intentionally has no `reasoning` parameter.
+func compactionRoundTrip(previousResponseId: String) async throws {
+    let client = makeClient()
+
+    let compacted = try await client.responses.compact(
+        request: ResponseCompactRequest(
+            model: "gpt-5.6-luna",
+            previousResponseId: previousResponseId,
+            promptCacheKey: "support-thread-42",
+            promptCacheOptions: PromptCacheOptions(mode: .explicit, ttl: .m30)
+        )
+    )
+
+    // Locate the compaction item and reuse its encrypted context.
+    guard
+        let item = compacted.output.first(where: { $0.type == "compaction" }),
+        let encryptedContent = item.encryptedContent
+    else {
+        print("No compaction item returned.")
+        return
+    }
+
+    let next = try await client.responses.create(
+        request: ResponseCreateRequest(
+            model: "gpt-5.6-luna",
+            input: .items([
+                ResponseRequestInputItem(
+                    compaction: ResponseCompactionInputItem(
+                        encryptedContent: encryptedContent,
+                        id: item.id
+                    )
+                ),
+                ResponseRequestInputItem(
+                    message: .user(parts: [.inputText("What should we do next?")])
+                )
+            ])
+        )
+    )
+
+    print(next.outputText ?? "")
+}

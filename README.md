@@ -22,6 +22,7 @@ A comprehensive, pure Swift SDK for the [OpenAI API](https://platform.openai.com
 - **Structured outputs** — JSON Schema enforcement for reliable extraction
 - **Reasoning models** — `ReasoningConfig` for o-series models with configurable effort
 - **Context compaction** — automatic and manual context management for long conversations
+- **Prompt caching** — request-level cache options and explicit content breakpoints via request objects
 - **Swift 6 strict concurrency** — all public types are `Sendable`; zero data races
 - **Zero dependencies** — only `Foundation`; no third-party packages
 - **Cross-platform** — all Apple platforms + Linux (via `FoundationNetworking`)
@@ -808,6 +809,196 @@ let response = try await client.responses.create(
     previousResponseId: compacted.id
 )
 ```
+
+---
+
+## Request Objects and Prompt Caching
+
+Model identifiers are plain `String` values throughout SwiftOpenAI, so the
+existing `create(model:...)` methods already accept any model ID your account can
+reach — including `gpt-5.6-sol`, `gpt-5.6-terra`, and `gpt-5.6-luna`. Using them
+is opt-in: package defaults and every other example in this README are unchanged.
+
+The request-object overloads — `create(request:)`, `createStream(request:)`, and
+`compact(request:)` — exist for a different reason. They carry evolving content
+unions, such as an explicit `prompt_cache_breakpoint` or `input_file` detail,
+without adding cases to the legacy public enums (`ChatCompletionMessage`,
+`ChatCompletionContentPart`, `ResponseInput`, `ResponseInputContentPart`), which
+would be a source-breaking change. Both styles encode a flat request body: the
+request objects never nest legacy parameters or cache options under an SDK-only
+key.
+
+> **Serialization support is not runtime access.** SwiftOpenAI's tests verify
+> that these types serialize to the documented request schema. They do not assert
+> that a particular model ID, cache mode, or reasoning mode is available to you —
+> that depends on your account, region, and model access.
+
+### Chat Completions with an explicit cache breakpoint
+
+`PromptCacheBreakpoint()` takes no arguments — it always encodes the only
+official mode, `explicit`.
+
+```swift
+import SwiftOpenAI
+
+func promptCacheRequestObject(client: OpenAI) async throws {
+    // A long, stable prefix that is worth reusing across requests.
+    let styleGuide = """
+        You are an editor for a Swift developer newsletter. Prefer short \
+        sentences, active voice, and concrete API names.
+        """
+
+    let request = ChatCompletionRequest(
+        model: "gpt-5.6-sol",
+        messages: [
+            .user(parts: [
+                // Everything up to and including this part is the cacheable prefix.
+                .text(styleGuide, promptCacheBreakpoint: PromptCacheBreakpoint()),
+                .text("Rewrite the release note above for a mobile audience.")
+            ])
+        ],
+        // `.m30` encodes the "30m" minimum cache lifetime.
+        promptCacheOptions: PromptCacheOptions(mode: .explicit, ttl: .m30)
+    )
+
+    let completion = try await client.chat.completions.create(request: request)
+    print(completion.choices.first?.message.content ?? "")
+    print("Cached prompt tokens: \(completion.usage?.promptTokensDetails?.cachedTokens ?? 0)")
+}
+```
+
+To keep an existing `ChatCompletionCreateParams` value and only add cache
+options, bridge it — every legacy option retains its current wire key:
+
+```swift
+import SwiftOpenAI
+
+func promptCacheBridgingLegacyParams(client: OpenAI) async throws {
+    let params = ChatCompletionCreateParams(
+        model: "gpt-5.6-terra",
+        messages: [
+            .system("You are a concise release-notes editor."),
+            .user("Summarize the changes in three bullets.")
+        ],
+        temperature: 0.2
+    )
+
+    let request = ChatCompletionRequest(
+        params,
+        promptCacheOptions: PromptCacheOptions(mode: .implicit, ttl: .m30)
+    )
+
+    let stream = try await client.chat.completions.createStream(request: request)
+    for try await chunk in stream {
+        print(chunk.choices.first?.delta?.content ?? "", terminator: "")
+    }
+    print()
+}
+```
+
+`create(request:)` always uses the non-streaming endpoint shape and omits any
+`stream` value carried over from bridged parameters; `createStream(request:)`
+sends `stream: true` at the top level. No other key changes between the two.
+
+### Responses with file input, cache options, and reasoning
+
+```swift
+import Foundation
+import SwiftOpenAI
+
+func requestObjectWithFileAndReasoning() async throws {
+    let client = OpenAI(apiKey: ProcessInfo.processInfo.environment["OPENAI_API_KEY"] ?? "")
+
+    // `effort` and `mode` are unrestricted strings, forwarded verbatim when set.
+    let reasoningMode = ProcessInfo.processInfo.environment["OPENAI_REASONING_MODE"]
+
+    let request = ResponseCreateRequest(
+        model: "gpt-5.6-terra",
+        input: .messages([
+            .user(parts: [
+                .inputFile(
+                    id: "file-abc123",
+                    detail: .high,             // .auto, .low, .high, .other(String)
+                    promptCacheBreakpoint: PromptCacheBreakpoint()
+                ),
+                .inputText("Summarize the attached contract in five bullets.")
+            ])
+        ]),
+        options: ResponseCreateOptions(
+            reasoning: .full(
+                effort: "high",
+                context: .allTurns,            // .auto, .currentTurn, .allTurns
+                mode: reasoningMode,
+                summary: .detailed             // .auto, .concise, .detailed
+            ),
+            promptCacheKey: "contract-review-v1",
+            promptCacheOptions: PromptCacheOptions(mode: .explicit, ttl: .m30)
+        )
+    )
+
+    let response = try await client.responses.create(request: request)
+    print(response.outputText ?? "")
+    print("Cached input tokens: \(response.usage?.inputTokensDetails?.cachedTokens ?? 0)")
+}
+```
+
+`createStream(request:)` sends the same body with `stream: true` added at the top
+level.
+
+### Compaction round-trip
+
+`ResponseCompactRequest` accepts cache settings and, deliberately, no reasoning
+configuration — the compact endpoint does not take one. The encrypted compaction
+item can be fed straight back as an input item on the next turn:
+
+```swift
+import Foundation
+import SwiftOpenAI
+
+func compactionRoundTrip(previousResponseId: String) async throws {
+    let client = OpenAI(apiKey: ProcessInfo.processInfo.environment["OPENAI_API_KEY"] ?? "")
+
+    let compacted = try await client.responses.compact(
+        request: ResponseCompactRequest(
+            model: "gpt-5.6-luna",
+            previousResponseId: previousResponseId,
+            promptCacheKey: "support-thread-42",
+            promptCacheOptions: PromptCacheOptions(mode: .explicit, ttl: .m30)
+        )
+    )
+
+    guard
+        let item = compacted.output.first(where: { $0.type == "compaction" }),
+        let encryptedContent = item.encryptedContent
+    else {
+        print("No compaction item returned.")
+        return
+    }
+
+    let next = try await client.responses.create(
+        request: ResponseCreateRequest(
+            model: "gpt-5.6-luna",
+            input: .items([
+                ResponseRequestInputItem(
+                    compaction: ResponseCompactionInputItem(
+                        encryptedContent: encryptedContent,
+                        id: item.id
+                    )
+                ),
+                ResponseRequestInputItem(
+                    message: .user(parts: [.inputText("What should we do next?")])
+                )
+            ])
+        )
+    )
+
+    print(next.outputText ?? "")
+}
+```
+
+Runnable versions live in
+[`Examples/ChatExamples.swift`](Examples/ChatExamples.swift) and
+[`Examples/ResponsesExamples.swift`](Examples/ResponsesExamples.swift).
 
 ---
 
@@ -1645,14 +1836,19 @@ for try await chunk in stream {
 |----------|--------|-------------|
 | **Responses** | | |
 | `client.responses` | `create(...)` | Generate a response |
+| | `create(request:)` | Generate a response from a `ResponseCreateRequest` |
 | | `createStream(...)` | Stream a response (SSE) |
+| | `createStream(request:)` | Stream a response from a `ResponseCreateRequest` |
 | | `retrieve(_:)` | Retrieve a stored response |
 | | `delete(_:)` | Delete a stored response |
 | | `compact(...)` | Compact conversation context |
+| | `compact(request:)` | Compact context from a `ResponseCompactRequest` |
 | | `connectWebSocket()` | Open WebSocket connection *(Darwin only)* |
 | **Chat Completions** | | |
 | `client.chat.completions` | `create(...)` | Create a chat completion |
+| | `create(request:)` | Create a chat completion from a `ChatCompletionRequest` |
 | | `createStream(...)` | Stream a chat completion (SSE) |
+| | `createStream(request:)` | Stream a chat completion from a `ChatCompletionRequest` |
 | **Conversations** | | |
 | `client.conversations` | `create(...)` | Create a conversation |
 | | `retrieve(_:)` | Retrieve a conversation |

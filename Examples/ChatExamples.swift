@@ -349,3 +349,80 @@ func strictToolExample(client: OpenAI) async throws {
         print("Args (strict): \(toolCall.function.arguments)")
     }
 }
+
+// MARK: - 11. Prompt Caching with the Request Object
+
+/// Demonstrates the request-object overload `create(request:)` with prompt-cache
+/// options and an explicit content-level cache breakpoint.
+///
+/// `ChatCompletionRequest.model` is a plain `String`, so newer model IDs — such
+/// as `"gpt-5.6-sol"`, `"gpt-5.6-terra"`, or `"gpt-5.6-luna"` — are opt-in and
+/// need no SDK change. The existing `create(model:messages:...)` overload also
+/// accepts any model ID; the request wrapper exists so evolving content shapes
+/// (here, `prompt_cache_breakpoint`) can be sent without widening the legacy
+/// `ChatCompletionMessage` / `ChatCompletionContentPart` enums.
+///
+/// SwiftOpenAI verifies that these fields serialize to the documented request
+/// schema. Whether a given model ID actually runs is decided by your account,
+/// region, and model access.
+func promptCacheRequestObject(client: OpenAI) async throws {
+    // A long, stable prefix that is worth reusing across requests.
+    let styleGuide = """
+        You are an editor for a Swift developer newsletter. Prefer short \
+        sentences, active voice, and concrete API names.
+        """
+
+    let request = ChatCompletionRequest(
+        model: "gpt-5.6-sol",
+        messages: [
+            .user(parts: [
+                // Everything up to and including this part is the cacheable prefix.
+                .text(styleGuide, promptCacheBreakpoint: PromptCacheBreakpoint()),
+                .text("Rewrite the release note above for a mobile audience.")
+            ])
+        ],
+        // `.m30` encodes the "30m" minimum cache lifetime.
+        promptCacheOptions: PromptCacheOptions(mode: .explicit, ttl: .m30)
+    )
+
+    let response = try await client.chat.completions.create(request: request)
+
+    if let content = response.choices.first?.message.content {
+        print("Assistant: \(content)")
+    }
+    if let cached = response.usage?.promptTokensDetails?.cachedTokens {
+        print("Cached prompt tokens: \(cached)")
+    }
+}
+
+// MARK: - 12. Bridging Legacy Parameters into the Request Object
+
+/// Reuses an existing `ChatCompletionCreateParams` value and adds only the new
+/// prompt-cache options, keeping every legacy option on its existing wire key.
+///
+/// Use `createStream(request:)` for the streaming counterpart: it sends
+/// `stream: true` at the top level, while `create(request:)` omits any bridged
+/// `stream` value because it always uses the non-streaming endpoint shape.
+func promptCacheBridgingLegacyParams(client: OpenAI) async throws {
+    let params = ChatCompletionCreateParams(
+        model: "gpt-5.6-terra",
+        messages: [
+            .system("You are a concise release-notes editor."),
+            .user("Summarize the changes in three bullets.")
+        ],
+        temperature: 0.2
+    )
+
+    let request = ChatCompletionRequest(
+        params,
+        promptCacheOptions: PromptCacheOptions(mode: .implicit, ttl: .m30)
+    )
+
+    let stream = try await client.chat.completions.createStream(request: request)
+    for try await chunk in stream {
+        if let delta = chunk.choices.first?.delta?.content {
+            print(delta, terminator: "")
+        }
+    }
+    print()
+}

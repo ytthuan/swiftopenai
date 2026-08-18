@@ -38,6 +38,17 @@ public struct Response: Codable, Sendable {
     public let incompleteDetails: IncompleteDetails?
     /// Error information, if the response failed.
     public let error: ResponseError?
+    /// Prompt-cache routing key echoed by the service.
+    public let promptCacheKey: String?
+    /// Prompt-caching options applied to the response. Both fields are present
+    /// whenever the object is returned by the service.
+    public let promptCacheOptions: ResponsePromptCacheOptions?
+    /// Deprecated prompt-cache retention policy echoed by the service.
+    public let promptCacheRetention: PromptCacheRetention?
+    /// Effective reasoning configuration used for the response.
+    public let reasoning: ReasoningConfig?
+    /// Effective service tier used to serve the response.
+    public let serviceTier: ServiceTier?
 
     /// Creates a `Response` instance (useful for testing).
     public init(
@@ -76,6 +87,11 @@ public struct Response: Codable, Sendable {
         self.truncation = truncation
         self.incompleteDetails = incompleteDetails
         self.error = error
+        self.promptCacheKey = nil
+        self.promptCacheOptions = nil
+        self.promptCacheRetention = nil
+        self.reasoning = nil
+        self.serviceTier = nil
     }
 
     /// Details about why a response is incomplete.
@@ -225,9 +241,14 @@ public struct ResponseOutputItem: Codable, Sendable {
 
     /// The reasoning summary text.
     public let summary: [ResponseReasoningSummary]?
+    /// Encrypted reasoning or compaction content.
+    public let encryptedContent: String?
+    /// Identifier of the actor that created a compaction item.
+    public let createdBy: String?
 
     private enum CodingKeys: String, CodingKey {
         case type, id, role, status, content, callId, name, arguments, code, summary
+        case encryptedContent, createdBy
     }
 }
 
@@ -258,11 +279,17 @@ public struct ResponseAnnotation: Codable, Sendable {
 }
 
 /// A reasoning summary in a reasoning output item.
-public struct ResponseReasoningSummary: Codable, Sendable {
+public struct ResponseReasoningSummary: Codable, Sendable, Equatable {
     /// The type, typically `"summary_text"`.
     public let type: String
     /// The summary text.
     public let text: String?
+
+    /// Creates a reasoning summary block.
+    public init(type: String = "summary_text", text: String? = nil) {
+        self.type = type
+        self.text = text
+    }
 }
 
 // MARK: - Token Usage
@@ -772,16 +799,125 @@ public struct ContextManagement: Encodable, Sendable {
 
 // MARK: - Reasoning Configuration
 
-/// Configuration for reasoning models (o-series).
-public struct ReasoningConfig: Encodable, Sendable {
+/// Controls which reasoning items are retained across turns.
+public enum ResponseReasoningContext: Codable, Sendable, Equatable, Hashable {
+    /// Let the model choose the context behavior.
+    case auto
+    /// Retain reasoning only for the current turn.
+    case currentTurn
+    /// Retain reasoning across all turns.
+    case allTurns
+    /// A forward-compatible context value.
+    case other(String)
+
+    public init(from decoder: Decoder) throws {
+        let value = try decoder.singleValueContainer().decode(String.self)
+        switch value {
+        case "auto": self = .auto
+        case "current_turn": self = .currentTurn
+        case "all_turns": self = .allTurns
+        default: self = .other(value)
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case .auto: try container.encode("auto")
+        case .currentTurn: try container.encode("current_turn")
+        case .allTurns: try container.encode("all_turns")
+        case .other(let value): try container.encode(value)
+        }
+    }
+}
+
+/// Controls the form of a generated reasoning summary.
+public enum ResponseReasoningSummaryMode: Codable, Sendable, Equatable, Hashable {
+    /// Let the model select the summary form.
+    case auto
+    /// Generate a concise summary.
+    case concise
+    /// Generate a detailed summary.
+    case detailed
+    /// A forward-compatible summary value.
+    case other(String)
+
+    public init(from decoder: Decoder) throws {
+        let value = try decoder.singleValueContainer().decode(String.self)
+        switch value {
+        case "auto": self = .auto
+        case "concise": self = .concise
+        case "detailed": self = .detailed
+        default: self = .other(value)
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case .auto: try container.encode("auto")
+        case .concise: try container.encode("concise")
+        case .detailed: try container.encode("detailed")
+        case .other(let value): try container.encode(value)
+        }
+    }
+}
+
+/// Configuration for reasoning models.
+public struct ReasoningConfig: Codable, Sendable {
     /// The reasoning effort level.
     public let effort: String?
+    /// Reasoning context retained across turns.
+    public let context: ResponseReasoningContext?
+    /// Deprecated alias for `summary`.
+    public let generateSummary: ResponseReasoningSummaryMode?
+    /// Open-ended reasoning execution mode.
+    public let mode: String?
+    /// Requested reasoning summary form.
+    public let summary: ResponseReasoningSummaryMode?
 
     /// Creates a reasoning configuration.
     ///
     /// - Parameter effort: The effort level: `"low"`, `"medium"`, or `"high"`.
     public init(effort: String? = nil) {
         self.effort = effort
+        self.context = nil
+        self.generateSummary = nil
+        self.mode = nil
+        self.summary = nil
+    }
+
+    /// Creates a complete reasoning configuration.
+    ///
+    /// `effort` and `mode` remain unrestricted strings for model compatibility.
+    public static func full(
+        effort: String? = nil,
+        context: ResponseReasoningContext? = nil,
+        generateSummary: ResponseReasoningSummaryMode? = nil,
+        mode: String? = nil,
+        summary: ResponseReasoningSummaryMode? = nil
+    ) -> Self {
+        Self(
+            fullEffort: effort,
+            context: context,
+            generateSummary: generateSummary,
+            mode: mode,
+            summary: summary
+        )
+    }
+
+    private init(
+        fullEffort: String?,
+        context: ResponseReasoningContext?,
+        generateSummary: ResponseReasoningSummaryMode?,
+        mode: String?,
+        summary: ResponseReasoningSummaryMode?
+    ) {
+        self.effort = fullEffort
+        self.context = context
+        self.generateSummary = generateSummary
+        self.mode = mode
+        self.summary = summary
     }
 }
 
@@ -917,9 +1053,16 @@ public struct ResponseStreamEvent: Codable, Sendable {
     public let callId: String?
     /// The sequence number for ordering events.
     public let sequenceNumber: Int?
+    /// The reasoning summary part index.
+    public let summaryIndex: Int?
+    /// Optional event completion status.
+    public let status: String?
+    /// WebSocket lane identifier echoed by the service.
+    public let streamId: String?
 
     private enum CodingKeys: String, CodingKey {
         case type, response, item, part, delta, outputIndex, contentIndex
         case itemId, text, arguments, name, callId, sequenceNumber
+        case summaryIndex, status, streamId
     }
 }

@@ -26,8 +26,8 @@ let client = OpenAI(apiKey: ProcessInfo.processInfo.environment["OPENAI_API_KEY"
 | File | Topics Covered |
 |------|---------------|
 | [BasicUsage.swift](#basicusageswift) | Models, Embeddings, Moderations, Images, Error Handling |
-| [ChatExamples.swift](#chatexamplesswift) | Chat Completions, Conversations, Streaming, Tool Calling, JSON Mode |
-| [ResponsesExamples.swift](#responsesexamplesswift) | Responses API, `previousResponseId` Conversations, Streaming, Conversations API |
+| [ChatExamples.swift](#chatexamplesswift) | Chat Completions, Conversations, Streaming, Tool Calling, JSON Mode, Prompt Caching |
+| [ResponsesExamples.swift](#responsesexamplesswift) | Responses API, `previousResponseId` Conversations, Streaming, Conversations API, Prompt Caching, Compaction |
 | [AdvancedExamples.swift](#advancedexamplesswift) | Audio, Fine-Tuning, Batches, Vector Stores, Uploads, Custom Config |
 
 ---
@@ -208,6 +208,64 @@ let response = try await client.chat.completions.create(
         strict: true
     )
 )
+```
+
+### 11. Prompt Caching with the Request Object
+```swift
+// `model` is a plain String, so newer IDs such as "gpt-5.6-sol", "gpt-5.6-terra",
+// or "gpt-5.6-luna" are opt-in and need no SDK change. The request object adds
+// evolving content shapes (here, prompt_cache_breakpoint) without changing the
+// legacy ChatCompletionMessage / ChatCompletionContentPart enums.
+import SwiftOpenAI
+
+func promptCacheRequestObject(client: OpenAI) async throws {
+    let styleGuide = """
+        You are an editor for a Swift developer newsletter. Prefer short \
+        sentences, active voice, and concrete API names.
+        """
+
+    let request = ChatCompletionRequest(
+        model: "gpt-5.6-sol",
+        messages: [
+            .user(parts: [
+                .text(styleGuide, promptCacheBreakpoint: PromptCacheBreakpoint()),
+                .text("Rewrite the release note above for a mobile audience.")
+            ])
+        ],
+        promptCacheOptions: PromptCacheOptions(mode: .explicit, ttl: .m30)  // `.m30` → "30m"
+    )
+
+    let completion = try await client.chat.completions.create(request: request)
+    print("Cached prompt tokens: \(completion.usage?.promptTokensDetails?.cachedTokens ?? 0)")
+}
+```
+
+### 12. Bridging Legacy Parameters into the Request Object
+```swift
+// Keeps every legacy option on its existing wire key, adding only cache options.
+import SwiftOpenAI
+
+func promptCacheBridgingLegacyParams(client: OpenAI) async throws {
+    let params = ChatCompletionCreateParams(
+        model: "gpt-5.6-terra",
+        messages: [
+            .system("You are a concise release-notes editor."),
+            .user("Summarize the changes in three bullets.")
+        ],
+        temperature: 0.2
+    )
+
+    let request = ChatCompletionRequest(
+        params,
+        promptCacheOptions: PromptCacheOptions(mode: .implicit, ttl: .m30)
+    )
+
+    let stream = try await client.chat.completions.createStream(request: request)
+    for try await chunk in stream {
+        print(chunk.choices.first?.delta?.content ?? "", terminator: "")
+    }
+    print()
+}
 ```
 
 ---
@@ -414,6 +472,98 @@ try await client.conversations.items.create(
     ]
 )
 ```
+
+### 11. Request Object with File Input, Cache Options, and Reasoning
+```swift
+import Foundation
+import SwiftOpenAI
+
+func requestObjectWithFileAndReasoning() async throws {
+    let client = OpenAI(apiKey: ProcessInfo.processInfo.environment["OPENAI_API_KEY"] ?? "")
+
+    // `effort` and `mode` are unrestricted strings, forwarded verbatim when set.
+    let reasoningMode = ProcessInfo.processInfo.environment["OPENAI_REASONING_MODE"]
+
+    let request = ResponseCreateRequest(
+        model: "gpt-5.6-terra",
+        input: .messages([
+            .user(parts: [
+                .inputFile(
+                    id: "file-abc123",
+                    detail: .high,             // .auto, .low, .high, .other(String)
+                    promptCacheBreakpoint: PromptCacheBreakpoint()
+                ),
+                .inputText("Summarize the attached contract in five bullets.")
+            ])
+        ]),
+        options: ResponseCreateOptions(
+            reasoning: .full(
+                effort: "high",
+                context: .allTurns,            // .auto, .currentTurn, .allTurns
+                mode: reasoningMode,
+                summary: .detailed             // .auto, .concise, .detailed
+            ),
+            promptCacheKey: "contract-review-v1",
+            promptCacheOptions: PromptCacheOptions(mode: .explicit, ttl: .m30)
+        )
+    )
+
+    let response = try await client.responses.create(request: request)
+    print(response.outputText ?? "")
+}
+```
+
+### 12. Compaction Round-Trip with Cache Options
+```swift
+// ResponseCompactRequest takes no reasoning config — compact does not accept one.
+import Foundation
+import SwiftOpenAI
+
+func compactionRoundTrip(previousResponseId: String) async throws {
+    let client = OpenAI(apiKey: ProcessInfo.processInfo.environment["OPENAI_API_KEY"] ?? "")
+
+    let compacted = try await client.responses.compact(
+        request: ResponseCompactRequest(
+            model: "gpt-5.6-luna",
+            previousResponseId: previousResponseId,
+            promptCacheKey: "support-thread-42",
+            promptCacheOptions: PromptCacheOptions(mode: .explicit, ttl: .m30)
+        )
+    )
+
+    // Feed the encrypted compaction item back as an input item on the next turn.
+    guard
+        let item = compacted.output.first(where: { $0.type == "compaction" }),
+        let encryptedContent = item.encryptedContent
+    else {
+        print("No compaction item returned.")
+        return
+    }
+
+    let next = try await client.responses.create(
+        request: ResponseCreateRequest(
+            model: "gpt-5.6-luna",
+            input: .items([
+                ResponseRequestInputItem(
+                    compaction: ResponseCompactionInputItem(
+                        encryptedContent: encryptedContent,
+                        id: item.id
+                    )
+                ),
+                ResponseRequestInputItem(
+                    message: .user(parts: [.inputText("What should we do next?")])
+                )
+            ])
+        )
+    )
+
+    print(next.outputText ?? "")
+}
+```
+
+> These types are verified to serialize to the documented request schema. Whether
+> a given model ID, cache mode, or reasoning mode runs for you depends on your
+> account, region, and model access.
 
 ---
 
