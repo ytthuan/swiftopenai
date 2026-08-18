@@ -17,6 +17,34 @@ public struct ChatCompletions: Sendable {
         self.client = client
     }
 
+    /// Creates a chat completion from a source-compatible request wrapper.
+    ///
+    /// Any bridged `stream` value is omitted because this overload always uses the
+    /// non-streaming endpoint shape.
+    ///
+    /// - Parameter request: The flat request body, including optional prompt-cache
+    ///   options and content-level breakpoints.
+    /// - Returns: The created chat completion.
+    public func create(request: ChatCompletionRequest) async throws -> ChatCompletion {
+        try await client.post(
+            path: "chat/completions",
+            body: ChatCompletionRequestNonStreamingBody(request: request)
+        )
+    }
+
+    /// Creates a streaming chat completion from a source-compatible request wrapper.
+    ///
+    /// The overload forces `stream: true` at the top level without changing any
+    /// other request keys.
+    public func createStream(
+        request: ChatCompletionRequest
+    ) async throws -> ServerSentEventsStream<ChatCompletionChunk> {
+        try await client.postStream(
+            path: "chat/completions",
+            body: ChatCompletionRequestStreamingBody(request: request)
+        )
+    }
+
     /// Creates a chat completion.
     ///
     /// - Parameters:

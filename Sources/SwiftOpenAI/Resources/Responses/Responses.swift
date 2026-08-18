@@ -21,6 +21,28 @@ public struct Responses: Sendable {
 
     // MARK: - Create
 
+    /// Creates a model response from a source-compatible request wrapper.
+    ///
+    /// - Parameter request: A request whose options are flattened at the endpoint
+    ///   top level.
+    /// - Returns: The created response.
+    public func create(request: ResponseCreateRequest) async throws -> Response {
+        try await client.post(path: "responses", body: request)
+    }
+
+    /// Creates a streaming model response from a source-compatible request wrapper.
+    ///
+    /// The overload adds `stream: true` without nesting or otherwise changing the
+    /// request's top-level options.
+    public func createStream(
+        request: ResponseCreateRequest
+    ) async throws -> ServerSentEventsStream<ResponseStreamEvent> {
+        try await client.postStream(
+            path: "responses",
+            body: ResponseCreateRequestStreamingBody(request: request)
+        )
+    }
+
     /// Creates a model response.
     ///
     /// - Parameters:
@@ -188,6 +210,14 @@ public struct Responses: Sendable {
     }
 
     // MARK: - Compact
+
+    /// Compacts conversation context from a source-compatible compact request.
+    ///
+    /// - Parameter request: Compact input and optional prompt-cache settings.
+    /// - Returns: The compacted response.
+    public func compact(request: ResponseCompactRequest) async throws -> CompactedResponse {
+        try await client.post(path: "responses/compact", body: request)
+    }
 
     /// Compacts a conversation context to reduce token usage.
     ///

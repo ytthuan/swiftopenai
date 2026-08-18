@@ -2,11 +2,11 @@ import Foundation
 
 // MARK: - WebSocket Client Event
 
-/// Event sent by the client over a WebSocket connection to create a response.
+/// Legacy Swift event sent over a WebSocket connection to create a response.
 ///
-/// The payload mirrors the Responses API create body, with the addition of `generate`
-/// for warmup requests. Transport-specific fields like `stream` and `background` are
-/// not used in WebSocket mode.
+/// The `generate` field is retained only for source and wire compatibility with the
+/// pre-existing Swift API; it is not part of the pinned official `response.create`
+/// schema. Use `ResponsesWebSocket.create(request:)` for official request-object parity.
 ///
 /// Usage:
 /// ```swift
@@ -74,8 +74,7 @@ public struct ResponsesClientEvent: Encodable, Sendable {
     /// Service tier.
     public let serviceTier: ServiceTier?
 
-    /// Set to `false` to warm up request state without generating output.
-    /// The warmup returns a response ID usable as `previousResponseId` on the next turn.
+    /// Legacy compatibility field retained for the pre-existing Swift wire format.
     public let generate: Bool?
 
     public init(

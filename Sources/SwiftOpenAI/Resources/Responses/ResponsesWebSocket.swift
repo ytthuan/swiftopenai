@@ -2,6 +2,45 @@ import Foundation
 
 #if canImport(Darwin)
 
+enum ResponsesWebSocketTransportMessage: Sendable {
+    case string(String)
+    case data(Data)
+    case closed
+}
+
+protocol ResponsesWebSocketTransport: Sendable {
+    func transportConnect(request: URLRequest) async
+    func transportClose() async
+    func transportSend(text: String) async throws
+    func transportReceive() async throws -> ResponsesWebSocketTransportMessage
+}
+
+extension WebSocketClient: ResponsesWebSocketTransport {
+    func transportConnect(request: URLRequest) {
+        updateRequest(request)
+        connect()
+    }
+
+    func transportClose() {
+        close()
+    }
+
+    func transportSend(text: String) async throws {
+        try await send(.string(text))
+    }
+
+    func transportReceive() async throws -> ResponsesWebSocketTransportMessage {
+        switch try await receive() {
+        case .string(let text):
+            return .string(text)
+        case .data(let data):
+            return .data(data)
+        @unknown default:
+            return .closed
+        }
+    }
+}
+
 /// A persistent WebSocket connection to the Responses API for low-latency
 /// multi-turn workflows.
 ///
@@ -48,11 +87,34 @@ import Foundation
 /// - Note: Only one response can be in-flight at a time per connection (sequential execution).
 public actor ResponsesWebSocket {
 
-    private let client: WebSocketClient
+    private enum ResponseState: Equatable {
+        case receiving(UInt64)
+        case cancellationRequested(UInt64)
+        case draining(UInt64)
+    }
+
+    private enum ReceiveOwner: Equatable {
+        case response(UInt64)
+        case drain(UInt64)
+        case lowLevel
+    }
+
+    private enum ReceiveOutcome: Sendable {
+        case event(ResponseStreamEvent)
+        case terminal(ResponseStreamEvent)
+        case closed
+        case failure(OpenAIError)
+        case cancelledBeforeOutcome
+        case superseded
+    }
+
+    private let transport: any ResponsesWebSocketTransport
     private let configuration: Configuration
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
-    private var isInFlight = false
+    private var responseState: ResponseState?
+    private var receiveOwner: ReceiveOwner?
+    private var nextResponseID: UInt64 = 0
 
     init(configuration: Configuration, session: URLSession) {
         var request = URLRequest(url: configuration.websocketBaseURL.appendingPathComponent("responses"))
@@ -67,7 +129,16 @@ public actor ResponsesWebSocket {
         }
 
         self.configuration = configuration
-        self.client = WebSocketClient(session: session, request: request)
+        self.transport = WebSocketClient(session: session, request: request)
+        self.encoder = JSONEncoder()
+        self.encoder.keyEncodingStrategy = .convertToSnakeCase
+        self.decoder = JSONDecoder()
+        self.decoder.keyDecodingStrategy = .convertFromSnakeCase
+    }
+
+    init(configuration: Configuration, transport: any ResponsesWebSocketTransport) {
+        self.configuration = configuration
+        self.transport = transport
         self.encoder = JSONEncoder()
         self.encoder.keyEncodingStrategy = .convertToSnakeCase
         self.decoder = JSONDecoder()
@@ -94,16 +165,25 @@ public actor ResponsesWebSocket {
         if let project = configuration.project {
             request.setValue(project.replacingOccurrences(of: "\r", with: "").replacingOccurrences(of: "\n", with: ""), forHTTPHeaderField: "OpenAI-Project")
         }
-        await client.updateRequest(request)
-        await client.connect()
+        await transport.transportConnect(request: request)
     }
 
     /// Closes the WebSocket connection gracefully.
     public func close() async {
-        await client.close()
+        await transport.transportClose()
     }
 
     // MARK: - Create Response
+
+    /// Sends an official flat `response.create` event from a Responses request.
+    ///
+    /// - Parameter request: The Responses request to send.
+    /// - Returns: A stream of response server events.
+    public func create(
+        request: ResponseCreateRequest
+    ) async throws -> AsyncThrowingStream<ResponseStreamEvent, Error> {
+        try await start(ResponseWebSocketCreateRequest(request: request))
+    }
 
     /// Sends a `response.create` event and returns a stream of server events.
     ///
@@ -129,7 +209,7 @@ public actor ResponsesWebSocket {
     ///   - parallelToolCalls: Whether to run tool calls in parallel.
     ///   - maxToolCalls: Maximum number of tool calls.
     ///   - serviceTier: Service tier.
-    ///   - generate: Set to `false` for warmup (prepares state without output).
+    ///   - generate: Legacy compatibility option for the pre-existing Swift wire format.
     /// - Returns: An `AsyncThrowingStream` of `ResponseStreamEvent` objects.
     public func create(
         model: String,
@@ -173,82 +253,12 @@ public actor ResponsesWebSocket {
             serviceTier: serviceTier,
             generate: generate
         )
-
-        guard !isInFlight else {
-            throw OpenAIError.connectionError(message: "A response is already in-flight on this WebSocket connection")
-        }
-        isInFlight = true
-        do {
-            try await sendEncodable(event)
-        } catch {
-            isInFlight = false
-            throw error
-        }
-
-        let decoder = self.decoder
-        let client = self.client
-
-        return AsyncThrowingStream { continuation in
-            let receiveTask = Task {
-                do {
-                    while !Task.isCancelled {
-                        let data = try await receiveRawData(client: client)
-                        guard let data else {
-                            continuation.finish()
-                            break
-                        }
-
-                        // Check for error event first
-                        if let errorEvent = try? decoder.decode(WebSocketErrorEvent.self, from: data),
-                           errorEvent.type == "error" {
-                            continuation.finish(throwing: OpenAIError.apiError(
-                                statusCode: errorEvent.status ?? 400,
-                                message: errorEvent.error.message,
-                                type: errorEvent.error.type,
-                                code: errorEvent.error.code
-                            ))
-                            break
-                        }
-
-                        let streamEvent: ResponseStreamEvent
-                        do {
-                            streamEvent = try decoder.decode(ResponseStreamEvent.self, from: data)
-                        } catch {
-                            continuation.finish(throwing: OpenAIError.decodingError(message: "\(error)"))
-                            break
-                        }
-                        continuation.yield(streamEvent)
-
-                        // Terminal events
-                        if streamEvent.type == "response.completed" ||
-                           streamEvent.type == "response.failed" ||
-                           streamEvent.type == "response.incomplete" {
-                            continuation.finish()
-                            break
-                        }
-                    }
-                    continuation.finish()
-                } catch let error as OpenAIError {
-                    continuation.finish(throwing: error)
-                } catch {
-                    continuation.finish(throwing: OpenAIError.connectionError(message: "\(error)"))
-                }
-                if !Task.isCancelled {
-                    await self.setInFlight(false)
-                }
-            }
-
-            continuation.onTermination = { @Sendable termination in
-                receiveTask.cancel()
-                guard case .cancelled = termination else { return }
-                Task { await self.drainCurrentResponse(client: client, decoder: decoder) }
-            }
-        }
+        return try await start(event)
     }
 
     // MARK: - Warmup
 
-    /// Warms up request state without generating a response.
+    /// Warms up request state using the legacy Swift WebSocket wire format.
     ///
     /// Returns the response ID that can be used as `previousResponseId` on
     /// the next turn to benefit from pre-warmed state.
@@ -276,17 +286,7 @@ public actor ResponsesWebSocket {
             generate: false
         )
 
-        var responseId: String?
-        for try await event in stream {
-            if let id = event.response?.id {
-                responseId = id
-            }
-        }
-
-        guard let id = responseId else {
-            throw OpenAIError.decodingError(message: "Warmup did not return a response ID")
-        }
-        return id
+        return try await responseID(from: stream)
     }
 
     // MARK: - Low-Level Send/Receive
@@ -298,7 +298,22 @@ public actor ResponsesWebSocket {
 
     /// Receives and decodes the next JSON message.
     public func receive<T: Decodable & Sendable>(_ type: T.Type) async throws -> T {
-        let message = try await client.receive()
+        guard responseState == nil else {
+            throw OpenAIError.connectionError(
+                message: "Cannot receive directly while a response receive or drain is active"
+            )
+        }
+        guard receiveOwner == nil else {
+            throw OpenAIError.connectionError(message: "A WebSocket receive operation is already active")
+        }
+        receiveOwner = .lowLevel
+        defer {
+            if receiveOwner == .lowLevel {
+                receiveOwner = nil
+            }
+        }
+
+        let message = try await transport.transportReceive()
         let data: Data
 
         switch message {
@@ -309,8 +324,8 @@ public actor ResponsesWebSocket {
             data = textData
         case .data(let binaryData):
             data = binaryData
-        @unknown default:
-            throw OpenAIError.connectionError(message: "Unsupported WebSocket message type")
+        case .closed:
+            throw OpenAIError.connectionError(message: "WebSocket connection closed")
         }
 
         do {
@@ -322,23 +337,164 @@ public actor ResponsesWebSocket {
 
     // MARK: - Private Helpers
 
-    private func setInFlight(_ value: Bool) {
-        isInFlight = value
+    private func start<Event: Encodable & Sendable>(
+        _ event: Event
+    ) async throws -> AsyncThrowingStream<ResponseStreamEvent, Error> {
+        guard responseState == nil else {
+            throw OpenAIError.connectionError(message: "A response is already in-flight on this WebSocket connection")
+        }
+        guard receiveOwner == nil else {
+            throw OpenAIError.connectionError(message: "A WebSocket receive operation is already active")
+        }
+
+        nextResponseID &+= 1
+        let responseID = nextResponseID
+        responseState = .receiving(responseID)
+        do {
+            try await sendEncodable(event)
+        } catch {
+            completeResponse(responseID)
+            throw error
+        }
+
+        return AsyncThrowingStream { continuation in
+            let receiveTask = Task {
+                while true {
+                    let outcome = await self.receiveNextOutcome(responseID: responseID)
+                    switch outcome {
+                    case .event(let streamEvent):
+                        continuation.yield(streamEvent)
+                        if Task.isCancelled {
+                            return
+                        }
+                    case .terminal(let streamEvent):
+                        continuation.yield(streamEvent)
+                        continuation.finish()
+                        return
+                    case .closed:
+                        continuation.finish()
+                        return
+                    case .failure(let error):
+                        continuation.finish(throwing: error)
+                        return
+                    case .cancelledBeforeOutcome, .superseded:
+                        return
+                    }
+                }
+            }
+
+            continuation.onTermination = { @Sendable termination in
+                guard case .cancelled = termination else { return }
+                Task {
+                    await self.requestConsumerCancellation(responseID: responseID)
+                    receiveTask.cancel()
+                    _ = await receiveTask.result
+                    await self.drainResponseIfNeeded(responseID: responseID)
+                }
+            }
+        }
+    }
+
+    private func responseID(
+        from stream: AsyncThrowingStream<ResponseStreamEvent, Error>
+    ) async throws -> String {
+        var responseId: String?
+        for try await event in stream {
+            if let id = event.response?.id {
+                responseId = id
+            }
+        }
+        guard let responseId else {
+            throw OpenAIError.decodingError(message: "Warmup did not return a response ID")
+        }
+        return responseId
+    }
+
+    private func receiveNextOutcome(responseID: UInt64) async -> ReceiveOutcome {
+        guard responseStateMatches(responseID), receiveOwner == nil else {
+            return .superseded
+        }
+        receiveOwner = .response(responseID)
+
+        let message: ResponsesWebSocketTransportMessage
+        do {
+            message = try await transport.transportReceive()
+        } catch {
+            releaseReceiveOwner(.response(responseID))
+            let errorCode = (error as NSError).code
+            if Task.isCancelled && (error is CancellationError || errorCode == -999) {
+                return .cancelledBeforeOutcome
+            }
+            completeResponse(responseID)
+            if isConnectionCloseError(error) {
+                return .closed
+            }
+            if let openAIError = error as? OpenAIError {
+                return .failure(openAIError)
+            }
+            return .failure(.connectionError(message: "\(error)"))
+        }
+
+        releaseReceiveOwner(.response(responseID))
+
+        guard let data = data(from: message) else {
+            completeResponse(responseID)
+            return .closed
+        }
+
+        if let errorEvent = try? decoder.decode(WebSocketErrorEvent.self, from: data),
+           errorEvent.type == "error" {
+            completeResponse(responseID)
+            return .failure(
+                .apiError(
+                    statusCode: errorEvent.status ?? 400,
+                    message: errorEvent.error.message,
+                    type: errorEvent.error.type,
+                    code: errorEvent.error.code
+                )
+            )
+        }
+
+        let streamEvent: ResponseStreamEvent
+        do {
+            streamEvent = try decoder.decode(ResponseStreamEvent.self, from: data)
+        } catch {
+            completeResponse(responseID)
+            return .failure(.decodingError(message: "\(error)"))
+        }
+
+        if isTerminal(streamEvent) {
+            completeResponse(responseID)
+            return .terminal(streamEvent)
+        }
+        return .event(streamEvent)
+    }
+
+    private func requestConsumerCancellation(responseID: UInt64) {
+        guard responseState == .receiving(responseID) else { return }
+        responseState = .cancellationRequested(responseID)
     }
 
     /// Drains messages for the current in-flight response, discarding them until a
     /// terminal event or connection close. Used on early stream cancellation to keep
     /// the WebSocket connection clean for the next `create()` call.
-    private func drainCurrentResponse(client: WebSocketClient, decoder: JSONDecoder) async {
-        defer { isInFlight = false }
-        guard isInFlight else { return }
+    private func drainResponseIfNeeded(responseID: UInt64) async {
+        guard responseState == .cancellationRequested(responseID), receiveOwner == nil else {
+            return
+        }
+        responseState = .draining(responseID)
+        receiveOwner = .drain(responseID)
+        defer {
+            releaseReceiveOwner(.drain(responseID))
+            completeResponse(responseID)
+        }
+
         while true {
             do {
-                guard let data = try await receiveRawData(client: client) else { return }
+                let message = try await transport.transportReceive()
+                guard let data = data(from: message) else { return }
                 if let event = try? decoder.decode(ResponseStreamEvent.self, from: data) {
-                    if event.type == "response.completed" ||
-                       event.type == "response.failed" ||
-                       event.type == "response.incomplete" {
+                    if isTerminal(event) {
                         return
                     }
                 }
@@ -352,6 +508,48 @@ public actor ResponsesWebSocket {
         }
     }
 
+    private func responseStateMatches(_ responseID: UInt64) -> Bool {
+        responseState == .receiving(responseID) ||
+            responseState == .cancellationRequested(responseID)
+    }
+
+    private func releaseReceiveOwner(_ owner: ReceiveOwner) {
+        if receiveOwner == owner {
+            receiveOwner = nil
+        }
+    }
+
+    @discardableResult
+    private func completeResponse(_ responseID: UInt64) -> Bool {
+        guard responseStateMatches(responseID) || responseState == .draining(responseID) else {
+            return false
+        }
+        responseState = nil
+        return true
+    }
+
+    private func data(from message: ResponsesWebSocketTransportMessage) -> Data? {
+        switch message {
+        case .string(let text):
+            return Data(text.utf8)
+        case .data(let data):
+            return data
+        case .closed:
+            return nil
+        }
+    }
+
+    private func isTerminal(_ event: ResponseStreamEvent) -> Bool {
+        event.type == "response.completed" ||
+            event.type == "response.failed" ||
+            event.type == "response.incomplete"
+    }
+
+    private func isConnectionCloseError(_ error: Error) -> Bool {
+        let code = (error as NSError).code
+        return code == 57 || code == 54 || code == -999
+    }
+
     private func sendEncodable<T: Encodable & Sendable>(_ value: T) async throws {
         let data: Data
         do {
@@ -362,31 +560,7 @@ public actor ResponsesWebSocket {
         guard let text = String(data: data, encoding: .utf8) else {
             throw OpenAIError.apiError(statusCode: 0, message: "Encoding produced non-UTF8 data", type: nil, code: nil)
         }
-        try await client.send(.string(text))
-    }
-}
-
-/// Receives raw data from a WebSocketClient, returning nil on connection close.
-private func receiveRawData(client: WebSocketClient) async throws -> Data? {
-    let message: URLSessionWebSocketTask.Message
-    do {
-        message = try await client.receive()
-    } catch {
-        let nsError = error as NSError
-        // Connection closed/cancelled codes
-        if nsError.code == 57 || nsError.code == 54 || nsError.code == -999 {
-            return nil
-        }
-        throw OpenAIError.connectionError(message: "\(error)")
-    }
-
-    switch message {
-    case .string(let text):
-        return Data(text.utf8)
-    case .data(let data):
-        return data
-    @unknown default:
-        return nil
+        try await transport.transportSend(text: text)
     }
 }
 
