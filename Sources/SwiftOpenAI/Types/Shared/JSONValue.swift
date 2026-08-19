@@ -136,6 +136,14 @@ public enum JSONValue: Codable, Sendable, Equatable {
 
     /// Encodes the represented JSON value.
     public func encode(to encoder: Encoder) throws {
+        if case .array(let value) = self {
+            var container = encoder.unkeyedContainer()
+            for element in value {
+                try container.encode(element)
+            }
+            return
+        }
+
         var container = encoder.singleValueContainer()
         switch self {
         case .null:
