@@ -75,6 +75,7 @@ struct HTTPClient: Sendable {
     static let encoder: JSONEncoder = {
         let encoder = JSONEncoder()
         encoder.keyEncodingStrategy = .convertToSnakeCase
+        encoder.outputFormatting.insert(.sortedKeys)
         return encoder
     }()
 
