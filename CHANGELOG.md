@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.12.1] — 2026-10-25
+
+### Fixed
+
+- Final HTTP JSON request encoding now recursively sorts object keys while preserving snake-case fields, omitted optional values, and array order.
+- Offline Chat Completions regressions verify stable outgoing bytes for nonstreaming and streaming requests across reused values, reconstructed tool schemas, and new clients, while preserving authentication and usage decoding.
+
+### Notes
+
+- No public API changes. Deterministic request bytes do not guarantee provider prompt-cache hits.
+
 ## v0.12.0 — 2026-08-19
 
 ### Added
