@@ -238,9 +238,10 @@ enum DecisionsFixtures {
             .init(label: "Blocked", value: 2, probability: 0.2),
         ]))
         #expect(result.answers[4] == .refusal(name: nil))
-        #expect(result.answers[5] == .other(try json(
+        let futureAnswer = try json(
             #"{"type":"future_answer","name":"future","ExtraPayload":{"KeepMyKey":[true,7,null]}}"#
-        )))
+        )
+        #expect(result.answers[5] == .other(futureAnswer))
         #expect(result.usage == DecisionUsage(
             inputTokens: 1200,
             inputTokensDetails: .init(cachedTokens: 640, cacheWriteTokens: 128),
@@ -315,8 +316,9 @@ enum DecisionsFixtures {
             #"{"type":"future","snake_key":1,"snakeKey":2,"Nested":{"KeepMyKey":true,"keep_my_key":false}}"#,
         ] {
             let answer = try HTTPClient.decoder.decode(DecisionAnswer.self, from: Data(fixture.utf8))
+            let expected = try json(fixture)
             #expect(answer.name == nil)
-            #expect(answer == .other(try json(fixture)))
+            #expect(answer == .other(expected))
             try expectWire(answer, fixture)
         }
         #expect(DecisionAnswer.other(.null).name == nil)

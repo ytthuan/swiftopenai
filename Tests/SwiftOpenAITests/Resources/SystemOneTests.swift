@@ -255,7 +255,8 @@ extension MockAPITests {
         #expect(MockURLProtocol.requestCount == 2)
         let tokenRequest = try #require(MockURLProtocol.recordedRequests.first)
         #expect(tokenRequest.url == tokenURL)
-        let tokenBody = try #require(MockURLProtocol.recordedRequestBodies.first ?? nil)
+        let tokenBodyEntry = try #require(MockURLProtocol.recordedRequestBodies.first)
+        let tokenBody = try #require(tokenBodyEntry)
         #expect(String(decoding: tokenBody, as: UTF8.self)
             .contains("scope=https%3A%2F%2Fcognitiveservices.azure.com%2F.default"))
 

@@ -90,7 +90,10 @@ extension MockAPITests {
             method, client: client, path: leadingSlash ? "/custom/items" : "custom/items", body: body,
             queryItems: [.init(name: "tag", value: "request & value"), .init(name: "flag", value: nil)]
         )
-        #expect(response == (try JSONDecoder().decode(JSONValue.self, from: Data(CustomRequestFixtures.response.utf8))))
+        let expectedResponse = try JSONDecoder().decode(
+            JSONValue.self, from: Data(CustomRequestFixtures.response.utf8)
+        )
+        #expect(response == expectedResponse)
         let sent = try #require(MockURLProtocol.lastRequest)
         #expect(sent.httpMethod == method.rawValue)
         #expect(sent.url?.path == "/openai/v1/custom/items")
@@ -220,7 +223,10 @@ extension MockAPITests {
             : "The API returns 500 on every call. This is my third report."
         let body: JSONValue = ["model": "Decision-1", "state": state, "questions": CustomRequestFixtures.questions]
         let response: JSONValue = try await client.post("/providers/microsoft/v1/systemone", body: body)
-        #expect(response == (try JSONDecoder().decode(JSONValue.self, from: Data(CustomRequestFixtures.systemOneResponse.utf8))))
+        let expectedResponse = try JSONDecoder().decode(
+            JSONValue.self, from: Data(CustomRequestFixtures.systemOneResponse.utf8)
+        )
+        #expect(response == expectedResponse)
         let sent = try #require(MockURLProtocol.lastRequest)
         #expect(sent.url?.absoluteString == "https://foundry.example.test/providers/microsoft/v1/systemone")
         #expect(sent.httpMethod == "POST")
@@ -252,12 +258,17 @@ extension MockAPITests {
         defer { client.shutdown() }
         let body: JSONValue = ["model": "Decision-1", "state": "Evidence", "questions": CustomRequestFixtures.questions]
         let result: JSONValue = try await client.post("/providers/microsoft/v1/systemone", body: body)
-        #expect(result == (try JSONDecoder().decode(JSONValue.self, from: Data(CustomRequestFixtures.systemOneResponse.utf8))))
+        let expectedResponse = try JSONDecoder().decode(
+            JSONValue.self, from: Data(CustomRequestFixtures.systemOneResponse.utf8)
+        )
+        #expect(result == expectedResponse)
         #expect(MockURLProtocol.requestCount == 2)
         #expect(await provider.calls == 2)
         #expect(MockURLProtocol.lastRequest?.value(forHTTPHeaderField: "Authorization") == "Bearer token-2")
         #expect(MockURLProtocol.lastRequest?.value(forHTTPHeaderField: "api-key") == nil)
-        #expect(try JSONDecoder().decode(JSONValue.self, from: #require(MockURLProtocol.lastRequestBody)) == body)
+        let finalRequestBody = try #require(MockURLProtocol.lastRequestBody)
+        let decodedBody = try JSONDecoder().decode(JSONValue.self, from: finalRequestBody)
+        #expect(decodedBody == body)
     }
 
     @Test func customRequestsPropagateDetailedAPIErrors() async throws {
