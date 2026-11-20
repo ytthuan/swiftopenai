@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Decisions REST API support through `client.decisions.create(...)` and `create(request:)`, using the shared transport, authentication, retries, and custom base URL configuration.
+- Dedicated request builders for text, images, JSON, role-specific messages, function and custom tool history, predicate/choice/score questions, prompt caching, and safety identifiers.
+- Typed ordered answers with distinct string/Boolean choices, fractional rubric scores, per-question refusals, future answer preservation, and complete token usage including cache reads and writes.
+- Offline wire-format, round-trip, and resource tests, plus Decisions usage examples in the README.
+- Standalone `gpt-6-luna` Decisions example loading its proxy URL and API key from a local settings file at runtime; expanded response-contract, HTTP failure, and retry tests cover all Decisions source lines.
+- Public custom JSON requests through `client.get`, `post`, `put`, `patch`, and `delete`, sharing the configured transport, authentication, query defaults, retries, and errors.
+- Explicit provider routing and native Microsoft Azure AI System One support (`client.systemOne.create(...)` / `create(request:)`) for `Decision-1.1` / `Decision-1` at `/providers/microsoft/v1/systemone`, with Foundry base URL route normalization, custom base path preservation, typed `noul`/`choice`/`score` and image asset models, and offline tests.
+- Native Microsoft `Decision-1.1` example using `client.systemOne`, Azure Entra or API key authentication, text/JSON state, all three question types, and complete-response latency.
+
 ## [0.12.1] — 2026-10-25
 
 ### Fixed
@@ -284,7 +297,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CI/CD workflows (GitHub Actions) with Swift build and test pipelines
 - Comprehensive usage examples in `Examples/`
 
-[Unreleased]: https://github.com/ytthuan/swiftopenai/compare/v0.10.2...HEAD
+[Unreleased]: https://github.com/ytthuan/swiftopenai/compare/v0.12.1...HEAD
 [0.10.2]: https://github.com/ytthuan/swiftopenai/compare/v0.10.1...v0.10.2
 [0.10.1]: https://github.com/ytthuan/swiftopenai/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/ytthuan/swiftopenai/compare/v0.8.0...v0.10.0

@@ -11,7 +11,7 @@ A comprehensive, pure Swift SDK for the [OpenAI API](https://platform.openai.com
 
 ## Features
 
-- **Full API coverage** — Responses, Chat Completions, Embeddings, Images, Audio, Files, Fine-tuning, Batches, Vector Stores, Uploads, Moderations, Models, Conversations, Realtime, and Legacy Completions
+- **Full API coverage** — Responses, Decisions, Chat Completions, Embeddings, Images, Audio, Files, Fine-tuning, Batches, Vector Stores, Uploads, Moderations, Models, Conversations, Realtime, and Legacy Completions
 - **Async/await** — every network call uses Swift concurrency; no completion handlers
 - **Streaming** — `AsyncSequence`-based SSE streaming for Responses and Chat Completions
 - **Vision / Image Input** — multimodal text + image messages for Chat Completions and Responses APIs, with base64 convenience helpers
@@ -1586,6 +1586,200 @@ let completion = try await client.chat.completions.create(
 
 ---
 
+## Decisions API
+
+The [Decisions API](https://developers.openai.com/api/docs/guides/decisions) evaluates shared text, images, JSON, or conversation history and returns predicate probabilities, fixed choices, and rubric scores. Use `client.decisions.create(...)` or pass a `DecisionCreateRequest` to `create(request:)`. The service currently supports `gpt-6-luna` and 1–400 questions per request.
+
+### Questions and typed answers
+
+```swift
+import SwiftOpenAI
+
+let client = OpenAI(apiKey: "sk-...")
+let decision = try await client.decisions.create(
+    model: "gpt-6-luna",
+    input: .text("The package arrived with a broken screen. I need a refund."),
+    questions: [
+        .predicate(
+            instructions: .text("Does the customer report a damaged item?"),
+            name: "damaged"
+        ),
+        .choice(
+            instructions: .text("Which department should handle this request?"),
+            choices: [
+                .init(value: "billing", description: "Refunds and payments"),
+                .init(value: "support", description: "Technical help"),
+                .init(value: "other", description: "Other requests"),
+            ],
+            name: "department"
+        ),
+        .score(
+            instructions: .text("How severe is the damage?"),
+            levels: [
+                .init(label: "Cosmetic"),
+                .init(label: "Usable", description: "Damaged but still works"),
+                .init(label: "Unusable", description: "Cannot be used"),
+            ],
+            name: "severity"
+        ),
+    ]
+)
+
+for answer in decision.answers {
+    switch answer {
+    case .predicate(let name, let probability):
+        print(name ?? "unnamed", probability)
+    case .choice(let name, let choice, let confidence, let probabilities):
+        print(name ?? "unnamed", choice, confidence, probabilities)
+    case .score(let name, let score, let confidence, let probabilities):
+        print(name ?? "unnamed", score, confidence, probabilities)
+    case .refusal(let name):
+        print("Refused:", name ?? "unnamed")
+    case .other(let json):
+        print("Future answer type:", json)
+    }
+}
+```
+
+Answers retain question order. A refusal affects that question; other answers remain usable. Score values are probability-weighted averages of zero-based level indices and can be fractional. Choices accept string or Boolean values: `.init(value: true)` is distinct from `.init(value: "true")`.
+
+### Images, JSON, and prompt caching
+
+```swift
+import SwiftOpenAI
+
+let client = OpenAI(apiKey: "sk-...")
+let request = DecisionCreateRequest(
+    model: "gpt-6-luna",
+    input: .items([
+        .developer("Compare the candidate with the supplied product reference."),
+        .user(parts: [
+            .text("Shared reference evidence"),
+            .json(["ProductID": "SKU-42", "expectedParts": ["screen", "stand"]]),
+            .image(
+                url: "https://example.com/reference.jpg",
+                detail: .original,
+                promptCacheBreakpoint: .init()
+            ),
+        ]),
+    ]),
+    questions: [
+        .predicate(
+            instructions: .parts([
+                .text("Does this candidate match the shared reference?"),
+                .image(url: "https://example.com/candidate.jpg"),
+            ]),
+            name: "matches_reference"
+        ),
+    ],
+    promptCacheKey: "product-reference-42",
+    promptCacheOptions: .init(mode: .explicit, ttl: .m30),
+    safetyIdentifier: "opaque-user-id"
+)
+let decision = try await client.decisions.create(request: request)
+print(decision.usage.inputTokensDetails.cachedTokens)
+print(decision.usage.inputTokensDetails.cacheWriteTokens)
+```
+
+Replace the example image URLs with publicly accessible images or base64 data URLs such as `data:image/png;base64,...`. Uploaded file IDs are not supported. JSON parts accept an object or an array of objects and preserve caller-supplied keys.
+
+Shared input-text and image parts support explicit cache breakpoints; question instructions use `DecisionQuestionInputPart` without breakpoint parameters. Omitting cache options leaves service defaults in effect. Cache reuse also depends on the service's minimum prefix length and matching rules; see the [Decisions caching guide](https://developers.openai.com/api/docs/guides/decisions#reuse-shared-input-with-prompt-caching). Cache reads and writes are already included in `inputTokens`.
+
+### Conversation and tool history
+
+```swift
+import SwiftOpenAI
+
+let client = OpenAI(apiKey: "sk-...")
+let decision = try await client.decisions.create(
+    model: "gpt-6-luna",
+    input: .items([
+        .system(parts: [DecisionInputText("Evaluate the evidence in the supplied history.")]),
+        .user("Was the returned item damaged?"),
+        .assistant(parts: [.text("I will check the inspection.")], phase: "commentary"),
+        .functionCall(callID: "lookup_1", name: "lookup_return", arguments: #"{"returnID":"R42"}"#),
+        .functionCallOutput(callID: "lookup_1", parts: [.text("The screen is cracked.")]),
+        .customToolCall(callID: "inspect_1", name: "inspect_photo", input: "Inspect return R42"),
+        .customToolCallOutput(callID: "inspect_1", output: "Visible screen damage"),
+    ]),
+    questions: [.predicate(instructions: .text("Does the evidence show damage?"), name: "damaged")]
+)
+print(decision.answers)
+```
+
+Tool outputs must reference matching call IDs. System and developer message parts contain input text; assistant history parts contain output text or refusals; tool-output parts contain text or images. Input and question wrappers also provide `init(jsonValue:)` for caller-supplied wire representations. The service validates request limits and semantic constraints.
+
+### Native Azure AI / Microsoft System One (`Decision-1.1`)
+
+Provider routing is explicit:
+
+- Use `client.decisions.create(...)` for the OpenAI `/decisions` API (`gpt-6-luna`).
+- Use `client.systemOne.create(...)` for the native Microsoft Azure AI Foundry `/providers/microsoft/v1/systemone` API (`Decision-1.1` / `Decision-1`).
+
+`client.systemOne` strips known Azure AI Foundry base URL suffixes (`/openai/v1`, `/openai`, `/models`, `/v1`, and `/api/projects/<project>` with optional route suffixes) before appending `/providers/microsoft/v1/systemone`. Custom non-Foundry base paths are preserved with `/providers/microsoft/v1/systemone` appended.
+
+```swift
+import Foundation
+import SwiftOpenAI
+
+let environment = ProcessInfo.processInfo.environment
+let client = OpenAI(
+    apiKey: "",
+    baseURL: URL(string: environment["AZURE_ENDPOINT"]!)!,
+    tokenProvider: StaticTokenProvider(token: environment["AZURE_ENTRA_TOKEN"]!)
+)
+defer { client.shutdown() }
+
+let result = try await client.systemOne.create(
+    model: environment["AZURE_DEPLOYMENT_NAME"] ?? "Decision-1.1",
+    state: .text("The payment integration still fails."),
+    questions: [
+        "urgent": .noul(instructions: "Does this message convey urgency?"),
+        "team": .choice(
+            instructions: "Which team should handle this ticket?",
+            criteria: [
+                "engineering": "Bugs, errors, and outages",
+                "support": "How-to and account questions",
+            ]
+        ),
+        "severity": .score(
+            instructions: "How severe is this incident?",
+            criteria: ["Cosmetic", "Minor", "Major", "Critical"]
+        ),
+    ]
+)
+
+for (name, answer) in result.answers {
+    switch answer {
+    case .noul(let probability):
+        print(name, probability)
+    case .choice(let choice, let confidence, let probabilities):
+        print(name, choice, confidence, probabilities)
+    case .score(let score, let confidence, let probabilities, let legend):
+        print(name, score, confidence, probabilities, legend ?? [:])
+    case .other(let json):
+        print("Future answer type:", name, json)
+    }
+}
+```
+
+Use `SystemOneState.json(...)` for structured JSON state and `assets: ["photo.png": .image(format: "png", dataBase64: ...)]` for image inputs referenced as `image:photo.png`. For Entra ID client-credentials authentication, use `OpenAI.azureSystemOne(resourceName:tenantId:clientId:clientSecret:)`; it targets the native System One route and requests a token for `https://cognitiveservices.azure.com/.default`. The existing `OpenAI.azureFoundry(...)` initializer remains configured for Azure AI Foundry project APIs and keeps its `https://ai.azure.com/.default` audience. API-key clients created with `OpenAI.azure(resourceName:apiKey:endpointSuffix: "services.ai.azure.com")` can also call `client.systemOne`. See the [complete Microsoft Decision-1.1 example](Examples/MicrosoftDecisionExample.swift) and the [Azure authentication example notes](Examples/README.md#microsoftdecisionexampleswift).
+
+### Custom JSON endpoints
+
+Public `client.get`, `post`, `put`, `patch`, and `delete` methods support custom JSON endpoints using the configured authentication, query defaults, retries, and error handling. Their response type can be any `Decodable & Sendable` model or `JSONValue`. Bodies accept `Encodable & Sendable` values. Typed properties use the SDK's snake-case coding rules; `JSONValue` preserves caller-supplied keys and array order. These methods require a JSON response; an empty response produces `OpenAIError.decodingError`.
+
+Pass unescaped paths relative to `baseURL`; an optional leading slash preserves the base path. Absolute URLs, dot segments, percent-encoded paths, embedded queries/fragments, backslashes, and control characters are rejected. Supply query parameters with `queryItems:`; they are appended after `defaultQueryItems`:
+
+```swift
+let result: JSONValue = try await client.get(
+    "custom/items",
+    queryItems: [URLQueryItem(name: "limit", value: "10")]
+)
+```
+
+---
+
 ## Other APIs
 
 ### Embeddings
@@ -1858,6 +2052,18 @@ for try await chunk in stream {
 | | `list(...)` | List conversation items |
 | | `retrieve(_:conversationId:)` | Get a single item |
 | | `delete(_:conversationId:)` | Delete an item |
+| **Decisions** | | |
+| `client.decisions` | `create(...)` | Evaluate predicate, choice, and score questions |
+| | `create(request:)` | Evaluate a `DecisionCreateRequest` |
+| **System One (Azure AI)** | | |
+| `client.systemOne` | `create(...)` | Evaluate native Microsoft `noul`, `choice`, and `score` questions |
+| | `create(request:)` | Evaluate a `SystemOneCreateRequest` |
+| **Custom JSON Endpoints** | | |
+| `client` | `get(_:queryItems:)` | GET a custom endpoint |
+| | `post(_:body:queryItems:)` | POST JSON to a custom endpoint |
+| | `put(_:body:queryItems:)` | PUT JSON to a custom endpoint |
+| | `patch(_:body:queryItems:)` | PATCH JSON at a custom endpoint |
+| | `delete(_:body:queryItems:)` | DELETE at a custom endpoint with a JSON response |
 | **Embeddings** | | |
 | `client.embeddings` | `create(...)` | Create embeddings |
 | **Models** | | |

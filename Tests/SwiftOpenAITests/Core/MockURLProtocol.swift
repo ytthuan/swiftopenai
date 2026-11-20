@@ -21,8 +21,14 @@ final class MockURLProtocol: URLProtocol, @unchecked Sendable {
     /// Optionally capture the last request for assertion.
     nonisolated(unsafe) static var lastRequest: URLRequest?
 
+    /// Captured requests in arrival order for multi-step authentication tests.
+    nonisolated(unsafe) static var recordedRequests: [URLRequest] = []
+
     /// Captured request body (URLSession strips httpBody, so we read from httpBodyStream).
     nonisolated(unsafe) static var lastRequestBody: Data?
+
+    /// Captured request bodies in arrival order.
+    nonisolated(unsafe) static var recordedRequestBodies: [Data?] = []
 
     /// An error to throw instead of returning a response.
     nonisolated(unsafe) static var mockError: Error?
@@ -41,10 +47,13 @@ final class MockURLProtocol: URLProtocol, @unchecked Sendable {
 
     override func startLoading() {
         Self.lastRequest = request
+        Self.recordedRequests.append(request)
+        var requestBody: Data?
 
         // Capture body from httpBody or httpBodyStream
         if let body = request.httpBody {
             Self.lastRequestBody = body
+            requestBody = body
         } else if let stream = request.httpBodyStream {
             stream.open()
             var data = Data()
@@ -60,7 +69,9 @@ final class MockURLProtocol: URLProtocol, @unchecked Sendable {
             }
             stream.close()
             Self.lastRequestBody = data
+            requestBody = data
         }
+        Self.recordedRequestBodies.append(requestBody)
 
         Self.requestCount += 1
 
@@ -104,6 +115,8 @@ final class MockURLProtocol: URLProtocol, @unchecked Sendable {
         mockSequence = []
         requestCount = 0
         lastRequest = nil
+        recordedRequests = []
         lastRequestBody = nil
+        recordedRequestBodies = []
     }
 }

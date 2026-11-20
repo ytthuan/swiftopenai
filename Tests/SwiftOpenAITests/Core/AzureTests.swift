@@ -59,6 +59,19 @@ import FoundationNetworking
         #expect(client.configuration.baseURL.absoluteString == "https://my-resource.services.ai.azure.com/openai/v1")
     }
 
+    @Test func azureSystemOneEntraInitializer() {
+        let client = OpenAI.azureSystemOne(
+            resourceName: "my-resource",
+            tenantId: "tenant-123",
+            clientId: "client-456",
+            clientSecret: "secret-789"
+        )
+        #expect(client.configuration.baseURL.absoluteString == "https://my-resource.services.ai.azure.com")
+        #expect(client.configuration.defaultQueryItems.isEmpty)
+        #expect(client.configuration.tokenProvider is EntraIDTokenProvider)
+        #expect(client.configuration.apiKey.isEmpty)
+    }
+
     @Test func azureFoundryEntraIDInitializer() {
         let client = OpenAI.azureFoundry(
             endpoint: "https://myaccount.services.ai.azure.com/api/projects/myproject",

@@ -11,7 +11,7 @@ struct HTTPClient: Sendable {
     let session: URLSession
     let configuration: Configuration
     private let baseComponents: URLComponents
-    private let basePath: String
+    let basePath: String
     private let commonHeaders: [(field: String, value: String)]
 
     init(configuration: Configuration, session: URLSession? = nil) {
@@ -94,8 +94,23 @@ struct HTTPClient: Sendable {
         body: (any Encodable & Sendable)? = nil,
         queryItems: [URLQueryItem]? = nil
     ) throws -> URLRequest {
+        try buildRequest(
+            resolvedPath: basePath + path,
+            method: method,
+            body: body,
+            queryItems: queryItems
+        )
+    }
+
+    /// Builds a URLRequest using an already-resolved URL path on the configured host.
+    func buildRequest(
+        resolvedPath: String,
+        method: String = "GET",
+        body: (any Encodable & Sendable)? = nil,
+        queryItems: [URLQueryItem]? = nil
+    ) throws -> URLRequest {
         var components = baseComponents
-        components.path = basePath + path
+        components.path = resolvedPath
         let allQueryItems = configuration.defaultQueryItems + (queryItems ?? [])
         if !allQueryItems.isEmpty {
             components.queryItems = allQueryItems
@@ -414,6 +429,15 @@ struct HTTPClient: Sendable {
         body: (any Encodable & Sendable)? = nil
     ) async throws -> T {
         let request = try buildRequest(path: path, method: "POST", body: body)
+        return try await perform(request: request)
+    }
+
+    /// POST request to an already-resolved URL path with JSON body and JSON response.
+    func postResolved<T: Decodable & Sendable>(
+        path: String,
+        body: (any Encodable & Sendable)? = nil
+    ) async throws -> T {
+        let request = try buildRequest(resolvedPath: path, method: "POST", body: body)
         return try await perform(request: request)
     }
 

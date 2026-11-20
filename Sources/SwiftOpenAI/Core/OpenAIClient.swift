@@ -28,6 +28,12 @@ public final class OpenAI: Sendable {
     /// Access the Embeddings API.
     public let embeddings: Embeddings
 
+    /// Access the Decisions API for classification and scoring.
+    public let decisions: Decisions
+
+    /// Access the native Microsoft Azure AI System One API (`POST /providers/microsoft/v1/systemone`).
+    public let systemOne: SystemOne
+
     /// Access the Moderations API.
     public let moderations: Moderations
 
@@ -123,6 +129,8 @@ public final class OpenAI: Sendable {
         self.httpClient = HTTPClient(configuration: configuration, session: session)
         self.models = Models(client: httpClient)
         self.embeddings = Embeddings(client: httpClient)
+        self.decisions = Decisions(client: httpClient)
+        self.systemOne = SystemOne(client: httpClient)
         self.moderations = Moderations(client: httpClient)
         self.images = Images(client: httpClient)
         self.audio = Audio(client: httpClient)
@@ -232,6 +240,79 @@ extension OpenAI {
             timeoutInterval: timeoutInterval,
             maxRetries: maxRetries,
             apiKeyHeaderName: "api-key",
+            maxMultipartPartSize: maxMultipartPartSize,
+            maxMultipartBodySize: maxMultipartBodySize,
+            session: session
+        )
+    }
+
+    /// Creates an OpenAI client configured for native Microsoft Azure AI System One
+    /// with Entra ID client-credentials authentication.
+    ///
+    /// Requests use the Microsoft System One endpoint and the Cognitive Services
+    /// token audience. Use `azureFoundry` for Azure AI Foundry project APIs.
+    ///
+    /// ```swift
+    /// let client = OpenAI.azureSystemOne(
+    ///     resourceName: "my-resource",
+    ///     tenantId: "your-tenant-id",
+    ///     clientId: "your-client-id",
+    ///     clientSecret: "your-client-secret"
+    /// )
+    /// let result = try await client.systemOne.create(
+    ///     model: "Decision-1.1",
+    ///     state: .text("The payment integration is failing."),
+    ///     questions: ["urgent": .noul(instructions: "Is this urgent?")]
+    /// )
+    /// ```
+    ///
+    /// - Parameters:
+    ///   - resourceName: Your Azure AI resource name.
+    ///   - tenantId: Azure Entra ID tenant ID.
+    ///   - clientId: Application (client) ID from app registration.
+    ///   - clientSecret: Client secret from app registration.
+    ///   - timeoutInterval: Request timeout in seconds. Default: 600.
+    ///   - maxRetries: Maximum retries for failed requests. Default: 2.
+    ///   - maxMultipartPartSize: Maximum bytes for any single multipart part. Default: 512 MB.
+    ///   - maxMultipartBodySize: Maximum bytes for the assembled multipart body. Default: 1 GB.
+    ///   - session: Optional custom URLSession.
+    public static func azureSystemOne(
+        resourceName: String,
+        tenantId: String,
+        clientId: String,
+        clientSecret: String,
+        timeoutInterval: TimeInterval = 600,
+        maxRetries: Int = 2,
+        maxMultipartPartSize: Int = 512 * 1024 * 1024,
+        maxMultipartBodySize: Int = 1024 * 1024 * 1024,
+        session: URLSession? = nil
+    ) -> OpenAI {
+        let hostnamePattern = /^[A-Za-z0-9]([A-Za-z0-9.\-]*[A-Za-z0-9])?$/
+        precondition(resourceName.wholeMatch(of: hostnamePattern) != nil,
+                     "SwiftOpenAI: Invalid Azure resource name")
+
+        var components = URLComponents()
+        components.scheme = "https"
+        components.host = "\(resourceName).services.ai.azure.com"
+
+        guard let baseURL = components.url else {
+            preconditionFailure("SwiftOpenAI: Failed to construct Azure System One base URL")
+        }
+
+        let tokenProvider = EntraIDTokenProvider(
+            tenantId: tenantId,
+            clientId: clientId,
+            clientSecret: clientSecret,
+            scope: "https://cognitiveservices.azure.com/.default",
+            session: session ?? .shared
+        )
+
+        return OpenAI(
+            apiKey: "",
+            baseURL: baseURL,
+            timeoutInterval: timeoutInterval,
+            maxRetries: maxRetries,
+            tokenProvider: tokenProvider,
             maxMultipartPartSize: maxMultipartPartSize,
             maxMultipartBodySize: maxMultipartBodySize,
             session: session
