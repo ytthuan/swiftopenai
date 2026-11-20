@@ -7,7 +7,7 @@ Standalone Swift reference files demonstrating every feature of the SwiftOpenAI 
 
 ## Setup
 
-All examples expect an `OPENAI_API_KEY` environment variable:
+The OpenAI Decisions example reads its proxy URL and API key from `~/.config/swiftopenai/settings.json`. The Microsoft Decision-1 example uses Azure environment variables described below. The other examples use an `OPENAI_API_KEY` environment variable:
 
 ```bash
 export OPENAI_API_KEY="sk-..."
@@ -28,6 +28,8 @@ let client = OpenAI(apiKey: ProcessInfo.processInfo.environment["OPENAI_API_KEY"
 | [BasicUsage.swift](#basicusageswift) | Models, Embeddings, Moderations, Images, Error Handling |
 | [ChatExamples.swift](#chatexamplesswift) | Chat Completions, Conversations, Streaming, Tool Calling, JSON Mode, Prompt Caching |
 | [ResponsesExamples.swift](#responsesexamplesswift) | Responses API, `previousResponseId` Conversations, Streaming, Conversations API, Prompt Caching, Compaction |
+| [DecisionsExample.swift](#decisionsexampleswift) | `gpt-6-luna` Decisions, Proxy Configuration, Predicate/Choice/Score Answers, Token Usage |
+| [MicrosoftDecisionExample.swift](#microsoftdecisionexampleswift) | Native `Decision-1.1`, `client.systemOne`, Azure Authentication, Text/JSON State, Noul/Choice/Score Answers, Latency |
 | [AdvancedExamples.swift](#advancedexamplesswift) | Audio, Fine-Tuning, Batches, Vector Stores, Uploads, Custom Config |
 
 ---
@@ -567,6 +569,87 @@ func compactionRoundTrip(previousResponseId: String) async throws {
 
 ---
 
+## DecisionsExample.swift
+
+Add [DecisionsExample.swift](DecisionsExample.swift) to an executable target that depends on SwiftOpenAI, then call:
+
+```swift
+try await decisionsExample()
+```
+
+The function reads `url` and `apiKey` from `~/.config/swiftopenai/settings.json` at runtime and sends one `gpt-6-luna` request to that proxy's `/decisions` endpoint. It prints predicate, choice, and score answers, handles refusals and future answer types, and reports token and cache usage. It never prints the configured key. Plain HTTP is supported for loopback proxies such as `http://localhost:4000/v1`.
+
+Create the settings file outside the repository using your own proxy URL and key:
+
+```json
+{
+  "url": "http://localhost:4000/v1",
+  "apiKey": "<your-proxy-api-key>"
+}
+```
+
+This basic example uses plain-text evidence. Richer JSON and image inputs are shown in the main README and require support in your proxy's Decisions endpoint.
+
+To use a different settings file:
+
+```swift
+import Foundation
+
+try await decisionsExample(settingsURL: URL(fileURLWithPath: "/path/to/setting.json"))
+```
+
+The SDK unit tests use mocked HTTP and do not read this configuration file. This example is a standalone reference file; `swift run` from the SDK root does not run it.
+
+For the native Microsoft `Decision-1` deployment, use the next example with the Foundry resource root and Azure credentials. `client.decisions` follows the OpenAI `/decisions` contract.
+
+---
+
+## MicrosoftDecisionExample.swift
+
+Add [MicrosoftDecisionExample.swift](MicrosoftDecisionExample.swift) to an executable target that depends on SwiftOpenAI. Configure your Foundry endpoint (resource root or a Foundry route such as `/openai/v1` or `/api/projects/<project>/openai/v1`) and your deployment name:
+
+```bash
+export AZURE_ENDPOINT="https://<resource>.services.ai.azure.com"
+export AZURE_DEPLOYMENT_NAME="Decision-1.1"
+```
+
+Use an existing Azure CLI login to obtain an Entra token at runtime:
+
+```bash
+export AZURE_ENTRA_TOKEN="$(az account get-access-token \
+  --resource https://cognitiveservices.azure.com \
+  --query accessToken --output tsv)"
+```
+
+Alternatively, provide `AZURE_API_KEY` through your existing secret environment. When both credentials are set, the example uses the Entra token. Call:
+
+```swift
+try await microsoftDecisionExample()
+```
+
+The example sends one native `/providers/microsoft/v1/systemone` request using `client.systemOne.create(...)`, decodes typed `choice`, `score`, and `noul` answers, and prints confidence, probability distributions, score levels, and token usage. It also measures complete-response latency; this API returns one nonstreaming JSON response.
+
+To evaluate structured JSON state:
+
+```swift
+try await microsoftDecisionExample(state: .json([
+    "message": "Checkout is down again. This is my third report.",
+    "customer_contact_count": 3,
+]))
+```
+
+`client.systemOne` strips known Foundry route suffixes automatically while preserving custom non-Foundry base paths. You can also pass a `settingsURL` JSON file (`{ "url": ..., "apiKey": ..., "deployment": "Decision-1.1" }`) to either `microsoftDecisionExample(settingsURL:)` (native Foundry `/providers/microsoft/v1/systemone`) or `microsoftDecisionProxyExample(settingsURL:)` (LiteLLM/OpenAI-compatible `/v1/decisions` proxy):
+
+```swift
+try await microsoftDecisionProxyExample(
+    settingsURL: URL(fileURLWithPath: "/path/to/setting.json")
+)
+```
+
+Both functions validate their configuration before sending a request and redact credentials from errors. Optional `environment` and `session` parameters support offline HTTP mocking.
+
+---
+
 ## AdvancedExamples.swift
 
 Production-oriented workflows for specialized APIs.
@@ -689,5 +772,5 @@ struct MyApp {
 ## Requirements
 
 - **SwiftOpenAI** package (see [main README](../README.md) for installation)
-- **OPENAI_API_KEY** environment variable with a valid API key
+- **OPENAI_API_KEY** environment variable, proxy settings for the OpenAI Decisions example, or Azure environment variables for the Microsoft Decision-1 example
 - Swift 6.0+ / Xcode 16+

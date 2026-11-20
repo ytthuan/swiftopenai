@@ -28,6 +28,12 @@ public final class OpenAI: Sendable {
     /// Access the Embeddings API.
     public let embeddings: Embeddings
 
+    /// Access the Decisions API for classification and scoring.
+    public let decisions: Decisions
+
+    /// Access the native Microsoft Azure AI System One API (`POST /providers/microsoft/v1/systemone`).
+    public let systemOne: SystemOne
+
     /// Access the Moderations API.
     public let moderations: Moderations
 
@@ -123,6 +129,8 @@ public final class OpenAI: Sendable {
         self.httpClient = HTTPClient(configuration: configuration, session: session)
         self.models = Models(client: httpClient)
         self.embeddings = Embeddings(client: httpClient)
+        self.decisions = Decisions(client: httpClient)
+        self.systemOne = SystemOne(client: httpClient)
         self.moderations = Moderations(client: httpClient)
         self.images = Images(client: httpClient)
         self.audio = Audio(client: httpClient)
