@@ -85,25 +85,25 @@ public enum DecisionAnswer: Codable, Sendable, Equatable {
         switch type {
         case "predicate":
             self = .predicate(
-                name: try container.decode(String?.self, forKey: .name),
+                name: try container.decodeIfPresent(String.self, forKey: .name),
                 probability: try container.decode(Double.self, forKey: .probability)
             )
         case "choice":
             self = .choice(
-                name: try container.decode(String?.self, forKey: .name),
+                name: try container.decodeIfPresent(String.self, forKey: .name),
                 choice: try container.decode(DecisionChoiceValue.self, forKey: .choice),
                 confidence: try container.decode(Double.self, forKey: .confidence),
                 probabilities: try container.decode([DecisionChoiceProbability].self, forKey: .probabilities)
             )
         case "score":
             self = .score(
-                name: try container.decode(String?.self, forKey: .name),
+                name: try container.decodeIfPresent(String.self, forKey: .name),
                 score: try container.decode(Double.self, forKey: .score),
                 confidence: try container.decode(Double.self, forKey: .confidence),
                 probabilities: try container.decode([DecisionScoreProbability].self, forKey: .probabilities)
             )
         case "refusal":
-            self = .refusal(name: try container.decode(String?.self, forKey: .name))
+            self = .refusal(name: try container.decodeIfPresent(String.self, forKey: .name))
         default:
             self = .other(try JSONValue(from: decoder))
         }

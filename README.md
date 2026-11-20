@@ -1763,7 +1763,7 @@ for (name, answer) in result.answers {
 }
 ```
 
-Use `SystemOneState.json(...)` for structured JSON state and `assets: ["photo.png": .image(format: "png", dataBase64: ...)]` for image inputs referenced as `image:photo.png`. Both `OpenAI.azure(resourceName:apiKey:endpointSuffix: "services.ai.azure.com")` and `OpenAI.azureFoundry(...)` work directly with `client.systemOne`. See the [complete Microsoft Decision-1.1 example](Examples/MicrosoftDecisionExample.swift).
+Use `SystemOneState.json(...)` for structured JSON state and `assets: ["photo.png": .image(format: "png", dataBase64: ...)]` for image inputs referenced as `image:photo.png`. For Entra ID client-credentials authentication, use `OpenAI.azureSystemOne(resourceName:tenantId:clientId:clientSecret:)`; it targets the native System One route and requests a token for `https://cognitiveservices.azure.com/.default`. The existing `OpenAI.azureFoundry(...)` initializer remains configured for Azure AI Foundry project APIs and keeps its `https://ai.azure.com/.default` audience. API-key clients created with `OpenAI.azure(resourceName:apiKey:endpointSuffix: "services.ai.azure.com")` can also call `client.systemOne`. See the [complete Microsoft Decision-1.1 example](Examples/MicrosoftDecisionExample.swift) and the [Azure authentication example notes](Examples/README.md#microsoftdecisionexampleswift).
 
 ### Custom JSON endpoints
 

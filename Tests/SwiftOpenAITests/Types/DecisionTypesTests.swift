@@ -270,10 +270,30 @@ enum DecisionsFixtures {
         #expect(DecisionAnswer.refusal(name: "blocked").name == "blocked")
     }
 
+    @Test func knownAnswersDecodeWithOmittedNullAndNamedQuestionNames() throws {
+        let fixtures: [(String, DecisionAnswer)] = [
+            (#"{"type":"predicate","probability":0.5}"#, .predicate(name: nil, probability: 0.5)),
+            (#"{"type":"choice","choice":true,"confidence":0.9,"probabilities":[]}"#, .choice(name: nil, choice: true, confidence: 0.9, probabilities: [])),
+            (#"{"type":"score","score":1.5,"confidence":0.8,"probabilities":[]}"#, .score(name: nil, score: 1.5, confidence: 0.8, probabilities: [])),
+            (#"{"type":"refusal"}"#, .refusal(name: nil)),
+            (#"{"type":"predicate","name":null,"probability":0.5}"#, .predicate(name: nil, probability: 0.5)),
+            (#"{"type":"choice","name":null,"choice":true,"confidence":0.9,"probabilities":[]}"#, .choice(name: nil, choice: true, confidence: 0.9, probabilities: [])),
+            (#"{"type":"score","name":null,"score":1.5,"confidence":0.8,"probabilities":[]}"#, .score(name: nil, score: 1.5, confidence: 0.8, probabilities: [])),
+            (#"{"type":"refusal","name":null}"#, .refusal(name: nil)),
+            (#"{"type":"predicate","name":"flag","probability":0.5}"#, .predicate(name: "flag", probability: 0.5)),
+            (#"{"type":"choice","name":"selection","choice":true,"confidence":0.9,"probabilities":[]}"#, .choice(name: "selection", choice: true, confidence: 0.9, probabilities: [])),
+            (#"{"type":"score","name":"rating","score":1.5,"confidence":0.8,"probabilities":[]}"#, .score(name: "rating", score: 1.5, confidence: 0.8, probabilities: [])),
+            (#"{"type":"refusal","name":"blocked"}"#, .refusal(name: "blocked")),
+        ]
+
+        for (fixture, expected) in fixtures {
+            #expect(try HTTPClient.decoder.decode(DecisionAnswer.self, from: Data(fixture.utf8)) == expected)
+        }
+    }
+
     @Test(arguments: [
         #"{"type":"predicate","name":null}"#,
         #"{"type":"predicate","name":"x","probability":"wrong"}"#,
-        #"{"type":"predicate","probability":0.5}"#,
         #"{"type":"choice","name":null,"choice":42,"confidence":0.9,"probabilities":[]}"#,
         #"{"type":"choice","name":null,"choice":true,"probabilities":[]}"#,
         #"{"type":"score","name":null,"score":1.1,"confidence":0.8}"#,

@@ -218,6 +218,52 @@ extension MockAPITests {
         #expect(foundryRequest.value(forHTTPHeaderField: "Authorization") == "Bearer entra-token")
     }
 
+    @Test func azureSystemOneUsesCognitiveServicesAudienceAndNativeRoute() async throws {
+        MockURLProtocol.reset()
+        defer { MockURLProtocol.reset() }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [MockURLProtocol.self]
+        let session = URLSession(configuration: configuration)
+        let tokenURL = try #require(URL(string: "https://login.microsoftonline.com/tenant-123/oauth2/v2.0/token"))
+        let systemOneURL = try #require(URL(string: "https://myrg.services.ai.azure.com/providers/microsoft/v1/systemone"))
+        MockURLProtocol.mockResponses = [
+            (
+                Data(#"{"access_token":"entra-token","expires_in":3600,"token_type":"Bearer"}"#.utf8),
+                try #require(HTTPURLResponse(url: tokenURL, statusCode: 200, httpVersion: nil, headerFields: nil))
+            ),
+            (
+                Data(SystemOneFixtures.response.utf8),
+                try #require(HTTPURLResponse(url: systemOneURL, statusCode: 200, httpVersion: nil, headerFields: nil))
+            ),
+        ]
+        let client = OpenAI.azureSystemOne(
+            resourceName: "myrg",
+            tenantId: "tenant-123",
+            clientId: "client-456",
+            clientSecret: "secret-789",
+            maxRetries: 0,
+            session: session
+        )
+        defer { client.shutdown() }
+
+        _ = try await client.systemOne.create(
+            model: "Decision-1.1",
+            state: .text("Evidence"),
+            questions: ["urgent": .noul(instructions: "Is this urgent?")]
+        )
+
+        #expect(MockURLProtocol.requestCount == 2)
+        let tokenRequest = try #require(MockURLProtocol.recordedRequests.first)
+        #expect(tokenRequest.url == tokenURL)
+        let tokenBody = try #require(MockURLProtocol.recordedRequestBodies.first ?? nil)
+        #expect(String(decoding: tokenBody, as: UTF8.self)
+            .contains("scope=https%3A%2F%2Fcognitiveservices.azure.com%2F.default"))
+
+        let systemOneRequest = try #require(MockURLProtocol.recordedRequests.dropFirst().first)
+        #expect(systemOneRequest.url == systemOneURL)
+        #expect(systemOneRequest.value(forHTTPHeaderField: "Authorization") == "Bearer entra-token")
+    }
+
     @Test func explicitProviderRoutingSeparatesDecisionsSystemOneAndCustomRequests() async throws {
         MockURLProtocol.reset()
         defer { MockURLProtocol.reset() }

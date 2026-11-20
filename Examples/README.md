@@ -627,6 +627,26 @@ Alternatively, provide `AZURE_API_KEY` through your existing secret environment.
 try await microsoftDecisionExample()
 ```
 
+For Entra ID client-credentials authentication directly in an application, use the System One-specific initializer. It requests a token for `https://cognitiveservices.azure.com/.default` and routes `client.systemOne` to the native Microsoft endpoint:
+
+```swift
+let client = OpenAI.azureSystemOne(
+    resourceName: "my-resource",
+    tenantId: "your-tenant-id",
+    clientId: "your-client-id",
+    clientSecret: "your-client-secret"
+)
+defer { client.shutdown() }
+
+let result = try await client.systemOne.create(
+    model: "Decision-1.1",
+    state: .text("The payment integration is failing."),
+    questions: ["urgent": .noul(instructions: "Is this urgent?")]
+)
+```
+
+This is separate from `OpenAI.azureFoundry(...)`, which retains the Azure AI Foundry project API audience and behavior. The example above continues to support Azure CLI tokens and API keys as an alternative.
+
 The example sends one native `/providers/microsoft/v1/systemone` request using `client.systemOne.create(...)`, decodes typed `choice`, `score`, and `noul` answers, and prints confidence, probability distributions, score levels, and token usage. It also measures complete-response latency; this API returns one nonstreaming JSON response.
 
 To evaluate structured JSON state:
