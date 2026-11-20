@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.0] — 2026-11-20
+
 ### Added
 
 - Decisions REST API support through `client.decisions.create(...)` and `create(request:)`, using the shared transport, authentication, retries, and custom base URL configuration.
@@ -17,6 +19,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Public custom JSON requests through `client.get`, `post`, `put`, `patch`, and `delete`, sharing the configured transport, authentication, query defaults, retries, and errors.
 - Explicit provider routing and native Microsoft Azure AI System One support (`client.systemOne.create(...)` / `create(request:)`) for `Decision-1.1` / `Decision-1` at `/providers/microsoft/v1/systemone`, with Foundry base URL route normalization, custom base path preservation, typed `noul`/`choice`/`score` and image asset models, and offline tests.
 - Native Microsoft `Decision-1.1` example using `client.systemOne`, Azure Entra or API key authentication, text/JSON state, all three question types, and complete-response latency.
+- `OpenAI.azureSystemOne(...)` initializer for Entra ID client-credentials authentication with the native System One route and Cognitive Services token audience.
+
+### Fixed
+
+- Decisions predicate, choice, score, and refusal answers now decode successfully when the optional `name` field is omitted, while continuing to accept explicit null and named values.
+- Linux Swift 6.0 test compilation by evaluating throwing expressions outside Testing assertion autoclosures; assertions are unchanged.
+
+### Validation
+
+- Offline test coverage for Decisions, custom requests, and System One routing and authentication; macOS and Linux CI pass.
 
 ## [0.12.1] — 2026-10-25
 
@@ -297,7 +309,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CI/CD workflows (GitHub Actions) with Swift build and test pipelines
 - Comprehensive usage examples in `Examples/`
 
-[Unreleased]: https://github.com/ytthuan/swiftopenai/compare/v0.12.1...HEAD
+[Unreleased]: https://github.com/ytthuan/swiftopenai/compare/v0.13.0...HEAD
+[0.13.0]: https://github.com/ytthuan/swiftopenai/compare/v0.12.1...v0.13.0
 [0.10.2]: https://github.com/ytthuan/swiftopenai/compare/v0.10.1...v0.10.2
 [0.10.1]: https://github.com/ytthuan/swiftopenai/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/ytthuan/swiftopenai/compare/v0.8.0...v0.10.0
